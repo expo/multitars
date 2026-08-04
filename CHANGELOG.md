@@ -1,5 +1,12 @@
 # multitars
 
+## 1.0.1
+
+### Patch Changes
+
+- Prevent a repeated `cancel` call from cancelling a stream's source twice
+  Submitted by [@kitten](https://github.com/kitten) (See [#24](https://github.com/expo/multitars/pull/24))
+
 ## 1.0.0
 
 ### Major Changes
