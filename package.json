@@ -46,9 +46,9 @@
   },
   "keywords": [],
   "license": "MIT",
-  "repository": "https://github.com/kitten/multitars",
+  "repository": "https://github.com/expo/multitars",
   "bugs": {
-    "url": "https://github.com/kitten/multitars/issues"
+    "url": "https://github.com/expo/multitars/issues"
   },
   "devDependencies": {
     "@babel/plugin-transform-typescript": "^7.28.5",
