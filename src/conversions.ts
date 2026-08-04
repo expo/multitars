@@ -13,7 +13,9 @@ const STREAM_STRATEGY: QueuingStrategy = { highWaterMark: 0 };
  * waits for any pending `pull` to settle first.
  *
  * The returned stream has a `cancel` method that is safe to call directly,
- * even when the stream is locked.
+ * even when the stream is locked. Since this bypasses the stream's own
+ * cancellation, which would otherwise reject a repeated `cancel` call, the
+ * `cancel` on the source is also only ever called once.
  */
 export function createReadableStream<T>(
   source: UnderlyingSource<T> & { expectedLength?: number }
@@ -21,15 +23,18 @@ export function createReadableStream<T>(
   const { pull, cancel } = source;
   if (pull && cancel) {
     let inFlight: void | PromiseLike<void>;
+    let cancelled: PromiseLike<void> | undefined;
     source.pull = function wrappedPull(controller) {
       return (inFlight = pull(controller));
     };
     source.cancel = function wrappedCancel() {
-      if (inFlight != null) {
+      if (cancelled != null) {
+        return cancelled;
+      } else if (inFlight != null) {
         const settle = () => cancel();
-        return Promise.resolve(inFlight).then(settle, settle);
+        return (cancelled = Promise.resolve(inFlight).then(settle, settle));
       }
-      return cancel();
+      return (cancelled = Promise.resolve(cancel()));
     };
   }
   const stream = new ReadableStream<T>(source, STREAM_STRATEGY);
