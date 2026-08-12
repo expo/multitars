@@ -280,12 +280,16 @@ async function* readTar(
 
   let header: TarHeader | undefined;
   while ((header = await decodeHeader(reader, gax)) != null) {
-    const pad = blockPad(header.size);
+    const size = header._paxSize ?? header.size;
+    if (!Number.isSafeInteger(size) || size < 0) {
+      throw new Error(`Invalid Tar: Invalid entry size ${size}`);
+    }
+    const pad = blockPad(size);
     let consumedTrailer = pad === 0;
-    let remaining = header._paxSize || header.size;
+    let remaining = size;
     const stream = createReadableStream<Uint8Array<ArrayBuffer>>({
       // NOTE(@kitten): This is needed in Cloudflare to attach the expected size to the stream
-      expectedLength: header.size,
+      expectedLength: size,
       async cancel() {
         if (!consumedTrailer) {
           remaining += pad;

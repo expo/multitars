@@ -10,8 +10,10 @@ import { Buffer } from 'node:buffer';
 import * as fs from 'node:fs';
 
 import { describe, it, expect } from 'vitest';
-import { TarTypeFlag } from '../tarShared';
+import { TarFile, TarTypeFlag } from '../tarShared';
 import { untar } from '../tarInput';
+import { tar } from '../tarOutput';
+import { iterableToStream } from './utils';
 
 const openTarball = () => {
   const tarball = Readable.toWeb(
@@ -86,6 +88,13 @@ const cancellationFiles: TestFile[] = [
 
 const cancellationFileNames = cancellationFiles.map(file => file.name);
 
+function patchHeader(header: Buffer) {
+  header.fill(0x20, 148, 156);
+  let checksum = 0;
+  for (const byte of header) checksum += byte;
+  header.write(`${checksum.toString(8).padStart(6, '0')}\0 `, 148, 'ascii');
+}
+
 describe('untar', () => {
   it('releases the input stream when parsing fails', async () => {
     const tarball = new Blob([new Uint8Array([1])]).stream();
@@ -108,6 +117,56 @@ describe('untar', () => {
     for await (const _entry of untar(tarball)) break;
 
     expect(tarball.locked).toBe(false);
+  });
+
+  it('respects a zero size override in a PAX header', async () => {
+    const pax = new Blob(['10 size=0\n']);
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([
+            TarFile.from(pax.stream(), 'pax', { size: pax.size }),
+            TarFile.from(new Blob([]).stream(), 'empty.txt', { size: 0 }),
+          ])
+        )
+      ).arrayBuffer()
+    );
+
+    archive[156] = 'x'.charCodeAt(0);
+    patchHeader(archive.subarray(0, 512));
+    const header = archive.subarray(1024, 1536);
+    header.fill(0, 124, 136);
+    header.write('00000000001\0', 124, 'ascii');
+    patchHeader(header);
+
+    const entries: { size: number; text: string }[] = [];
+    for await (const entry of untar(new Blob([archive]).stream())) {
+      entries.push({ size: entry.size, text: await entry.text() });
+    }
+
+    expect(entries).toEqual([{ size: 0, text: '' }]);
+  });
+
+  it('rejects an invalid PAX size override', async () => {
+    const pax = new Blob(['11 size=-1\n']);
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([
+            TarFile.from(pax.stream(), 'pax', { size: pax.size }),
+            TarFile.from(new Blob([]).stream(), 'empty.txt', { size: 0 }),
+          ])
+        )
+      ).arrayBuffer()
+    );
+    archive[156] = 'x'.charCodeAt(0);
+    patchHeader(archive.subarray(0, 512));
+
+    await expect(async () => {
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        await entry.text();
+      }
+    }).rejects.toThrow(/size/i);
   });
 
   it('extract a tarball successfully (unchunked)', async () => {

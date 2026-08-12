@@ -86,7 +86,7 @@ const getTarLinkName = (header: TarHeader): string | null =>
   header._longLinkName || header._paxLinkName || header.linkname || null;
 
 const getTarSize = (header: TarHeader): number =>
-  header._paxSize || header.size;
+  header._paxSize ?? header.size;
 
 type TarChunkTypeFlag = Exclude<TarTypeFlag, TarTypeFlag.FILE>;
 
