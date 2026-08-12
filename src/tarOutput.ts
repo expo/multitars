@@ -171,7 +171,7 @@ function encodeHeader(header: TarHeader): Uint8Array<ArrayBuffer> {
 function encodePax(header: TarHeader): Uint8Array<ArrayBuffer> | null {
   function encodePaxEntry(key: string, value: string) {
     const line = ` ${key}=${value}\n`;
-    let length = line.length;
+    let length = encoder.encode(line).byteLength;
     const prefix = `${length}`;
     length += prefix.length;
     // Since the encoded length must include the digits of length itself, we have to make
