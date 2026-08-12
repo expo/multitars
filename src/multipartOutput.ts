@@ -95,6 +95,7 @@ export async function* streamMultipart(
       yield encoder.encode(makeFormHeader({ name }, undefined));
       yield typeof value === 'string' ? encoder.encode(value) : value;
     }
+    // NOTE(@kitten): Due to workerd tending to transfer this Uint8Array, it can't be a constant
     yield encoder.encode(CRLF);
   }
   yield encoder.encode(FORM_FOOTER);
