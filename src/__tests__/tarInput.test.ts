@@ -6,6 +6,7 @@ import {
 import { pack } from 'tar-stream';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
+import { Buffer } from 'node:buffer';
 import * as fs from 'node:fs';
 
 import { describe, it, expect } from 'vitest';
@@ -20,7 +21,8 @@ const openTarball = () => {
 };
 
 function chunk(
-  readable: ReadableStream<Uint8Array>
+  readable: ReadableStream<Uint8Array>,
+  chunkSize = 500
 ): ReadableStream<Uint8Array> {
   let reader: ReadableStreamDefaultReader<Uint8Array>;
   return new ReadableStream({
@@ -30,8 +32,8 @@ function chunk(
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) return controller.close();
-      for (let sliceIdx = 0; sliceIdx < value.length; sliceIdx += 500) {
-        controller.enqueue(value.subarray(sliceIdx, sliceIdx + 500));
+      for (let sliceIdx = 0; sliceIdx < value.length; sliceIdx += chunkSize) {
+        controller.enqueue(value.subarray(sliceIdx, sliceIdx + chunkSize));
       }
     },
   });
@@ -39,7 +41,7 @@ function chunk(
 
 interface TestFile {
   name: string;
-  data: string;
+  data: string | Buffer;
 }
 
 function makeTarball(files: Iterable<TestFile>): ReadableStream<any> {
@@ -51,6 +53,38 @@ function makeTarball(files: Iterable<TestFile>): ReadableStream<any> {
   tar.finalize();
   return Readable.toWeb(readable);
 }
+
+function gatedStream(chunks: Uint8Array[]) {
+  let release: () => void = () => {};
+  const gate = () => new Promise<void>(resolve => (release = resolve));
+  let pending = gate();
+  let index = 0;
+
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        await pending;
+        pending = gate();
+        if (index >= chunks.length) return controller.close();
+        controller.enqueue(chunks[index++]);
+      },
+    },
+    { highWaterMark: 0 }
+  );
+
+  return { stream, release: () => release() };
+}
+
+const cancellationFiles: TestFile[] = [
+  { name: 'dropped/first.bin', data: Buffer.alloc(4096, 1) },
+  { name: 'kept/second.txt', data: 'second entry' },
+  { name: 'dropped/third.bin', data: Buffer.alloc(2048, 2) },
+  { name: 'kept/fourth.txt', data: 'fourth entry' },
+  { name: 'dropped/fifth.bin', data: Buffer.alloc(8, 3) },
+  { name: 'kept/sixth.txt', data: 'sixth entry' },
+];
+
+const cancellationFileNames = cancellationFiles.map(file => file.name);
 
 describe('untar', () => {
   it('releases the input stream when parsing fails', async () => {
@@ -201,6 +235,124 @@ describe('untar', () => {
     }
 
     expect(entries).toMatchSnapshot();
+  });
+
+  it('extracts every entry when skipped entries are not read', async () => {
+    const names: string[] = [];
+    const contents: string[] = [];
+
+    for await (const entry of untar(chunk(makeTarball(cancellationFiles)))) {
+      names.push(entry.name);
+      if (entry.name.startsWith('kept/')) contents.push(await entry.text());
+    }
+
+    expect(names).toEqual(cancellationFileNames);
+    expect(contents).toEqual(['second entry', 'fourth entry', 'sixth entry']);
+  });
+
+  it('extracts every entry when a skipped entry has a read in flight', async () => {
+    const names: string[] = [];
+    const contents: string[] = [];
+
+    for await (const entry of untar(chunk(makeTarball(cancellationFiles)))) {
+      names.push(entry.name);
+      if (entry.name.startsWith('dropped/')) {
+        void entry.stream().getReader().read();
+      } else {
+        contents.push(await entry.text());
+      }
+    }
+
+    expect(names).toEqual(cancellationFileNames);
+    expect(contents).toEqual(['second entry', 'fourth entry', 'sixth entry']);
+  });
+
+  it('extracts every entry when a partially read entry is abandoned', async () => {
+    const names: string[] = [];
+    const contents: string[] = [];
+
+    for await (const entry of untar(chunk(makeTarball(cancellationFiles)))) {
+      names.push(entry.name);
+      if (entry.name.startsWith('dropped/')) {
+        await entry.stream().getReader().read();
+      } else {
+        contents.push(await entry.text());
+      }
+    }
+
+    expect(names).toEqual(cancellationFileNames);
+    expect(contents).toEqual(['second entry', 'fourth entry', 'sixth entry']);
+  });
+
+  it('extracts an abandoned tiny entry with uneven input chunks', async () => {
+    const files: TestFile[] = [
+      { name: 'dropped/tiny.bin', data: Buffer.alloc(8, 1) },
+      { name: 'kept/second.txt', data: 'second entry' },
+    ];
+    const names: string[] = [];
+
+    for await (const entry of untar(chunk(makeTarball(files)))) {
+      names.push(entry.name);
+      if (entry.name.startsWith('dropped/')) {
+        await entry.stream().getReader().read();
+      } else {
+        await entry.text();
+      }
+    }
+
+    expect(names).toEqual(['dropped/tiny.bin', 'kept/second.txt']);
+  });
+
+  it('extracts an abandoned tiny entry with block-sized input chunks', async () => {
+    const files: TestFile[] = [
+      { name: 'dropped/tiny.bin', data: Buffer.alloc(8, 1) },
+      { name: 'kept/second.txt', data: 'second entry' },
+    ];
+    const names: string[] = [];
+
+    for await (const entry of untar(chunk(makeTarball(files), 512))) {
+      names.push(entry.name);
+      if (entry.name.startsWith('dropped/')) {
+        await entry.stream().getReader().read();
+      } else {
+        await entry.text();
+      }
+    }
+
+    expect(names).toEqual(['dropped/tiny.bin', 'kept/second.txt']);
+  });
+
+  it('cancels an entry whose pull is waiting for input', async () => {
+    const chunks: Uint8Array[] = [];
+    const tarball = makeTarball(cancellationFiles).getReader();
+    for (;;) {
+      const result = await tarball.read();
+      if (result.done) break;
+      for (let idx = 0; idx < result.value.length; idx += 500) {
+        chunks.push(result.value.subarray(idx, idx + 500));
+      }
+    }
+
+    const gated = gatedStream(chunks);
+    const names: string[] = [];
+    const parsing = (async () => {
+      for await (const entry of untar(gated.stream)) {
+        names.push(entry.name);
+        if (entry.name.startsWith('dropped/')) {
+          void entry.stream().getReader().read();
+        } else {
+          await entry.text();
+        }
+      }
+    })();
+
+    for (let idx = 0; idx <= chunks.length + 1; idx++) {
+      gated.release();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    await expect(parsing).resolves.toBeUndefined();
+    expect(names).toEqual(cancellationFileNames);
   });
 
   it('handles long names in PAX headers', async () => {

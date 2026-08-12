@@ -288,7 +288,6 @@ async function* readTar(
       expectedLength: header.size,
       async cancel() {
         if (!consumedTrailer) {
-          consumedTrailer = true;
           remaining += pad;
         }
         if (remaining > 0) {
@@ -296,6 +295,7 @@ async function* readTar(
           if (skipped > 0) throw new Error('Invalid Tar: Unexpected EOF');
           remaining = 0;
         }
+        consumedTrailer = true;
       },
       async pull(controller) {
         if (remaining) {
@@ -310,9 +310,9 @@ async function* readTar(
         }
         if (!remaining) {
           if (!consumedTrailer) {
-            consumedTrailer = true;
             const skipped = await reader.skip(pad);
             if (skipped > 0) throw new Error('Invalid Tar: Unexpected EOF');
+            consumedTrailer = true;
           }
           controller.close();
         }
