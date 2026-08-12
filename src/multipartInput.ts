@@ -159,6 +159,7 @@ async function decodeHeaders(
   const headers: MultipartHeaders = Object.create(null);
   while (byteLength < MAX_HEADERS_SIZE) {
     let header = '';
+    let headerByteLength = 0;
     for await (const chunk of readUntilBoundary(
       reader,
       CRLF,
@@ -176,13 +177,15 @@ async function decodeHeaders(
         // This means the multipart stream has ended
         return null;
       } else {
-        header += decoder.decode(chunk);
-        if (header.length > MAX_HEADER_SIZE)
+        headerByteLength += chunk.byteLength;
+        if (headerByteLength > MAX_HEADER_SIZE)
           throw new Error(
             'Invalid Multipart Headers: A header exceeded its maximum length of 16kB'
           );
+        header += decoder.decode(chunk, { stream: true });
       }
     }
+    header += decoder.decode();
 
     if (header) {
       const colonIdx = header.indexOf(':');
@@ -190,7 +193,7 @@ async function decodeHeaders(
         const headerName = header.slice(0, colonIdx).trim().toLowerCase();
         const headerValue = header.slice(colonIdx + 1).trim();
         if (headerValue) headers[headerName] = headerValue;
-        byteLength += header.length + CRLF.byteLength;
+        byteLength += headerByteLength + CRLF.byteLength;
       } else {
         throw new Error(
           'Invalid Multipart Headers: Invalid header value missing `:`'

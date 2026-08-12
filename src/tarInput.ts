@@ -20,21 +20,26 @@ async function decodePax(
   header: TarHeader
 ) {
   let remaining = header.size;
-  let pax = '';
+  const chunks: Uint8Array[] = [];
   while (remaining > 0) {
-    let block = await reader.read();
+    const block = await reader.read();
     if (!block || block.byteLength !== reader.blockSize)
       throw new Error('Invalid Tar: Unexpected EOF while parsing PAX data');
-    remaining -= block.byteLength;
-    if (remaining < 0) block = block.subarray(0, remaining);
-    pax += decoder.decode(block, { stream: true });
+    const length = Math.min(remaining, block.byteLength);
+    chunks.push(block.slice(0, length));
+    remaining -= length;
   }
-  for (let from = 0, to = 0; from < pax.length; to = 0) {
-    while (to < pax.length && pax.charCodeAt(to) !== 32) to++;
-    const length = parseInt(pax.slice(from, to), 10);
+  const pax = new Uint8Array(header.size);
+  for (let idx = 0, offset = 0; idx < chunks.length; idx++) {
+    pax.set(chunks[idx], offset);
+    offset += chunks[idx].byteLength;
+  }
+  for (let from = 0, to = 0; from < pax.byteLength; to = from) {
+    while (to < pax.byteLength && pax[to] !== 32) to++;
+    const length = parseInt(decoder.decode(pax.subarray(from, to)), 10);
     if (!length || length != length) break;
-    if (pax.charCodeAt(from + length - 1) !== 10) break;
-    const entry = pax.slice(to + 1, from + length - 1);
+    if (pax[from + length - 1] !== 10) break;
+    const entry = decoder.decode(pax.subarray(to + 1, from + length - 1));
     const keyIndex = entry.indexOf('=');
     if (keyIndex === -1) break;
     const key = entry.slice(0, keyIndex);

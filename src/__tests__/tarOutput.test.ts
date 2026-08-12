@@ -225,6 +225,72 @@ describe('tar', () => {
         streamToBuffer(iterableToStream(tar([file])))
       ).rejects.toThrow(/size/i);
     });
+
+    it('encodes multibyte PAX record lengths in bytes', async () => {
+      const name = `${'界'.repeat(120)}.txt`;
+      const file = new Blob(['content']);
+      const tarStream = tar([
+        TarFile.from(file.stream(), name, { size: file.size }),
+      ]);
+      const output = await streamToBuffer(iterableToStream(tarStream));
+      const record = output.subarray(512, output.indexOf(10, 512) + 1);
+      const separator = record.indexOf(32);
+      const declaredLength = Number(
+        new TextDecoder().decode(record.subarray(0, separator))
+      );
+
+      expect(declaredLength).toBe(record.byteLength);
+    });
+
+    it('compresses a multibyte name longer than the header field', async () => {
+      const name = `${'界'.repeat(80)}.txt`;
+      const file = new Blob(['content']);
+      const tarStream = tar([
+        TarFile.from(file.stream(), name, { size: file.size }),
+      ]);
+
+      const entries: { name: string; text: string }[] = [];
+      for await (const entry of untar(iterableToStream(tarStream))) {
+        entries.push({ name: entry.name, text: await entry.text() });
+      }
+
+      expect(entries).toEqual([{ name, text: 'content' }]);
+    });
+
+    it('retains byte-safe fallbacks in headers overridden by PAX', async () => {
+      const name = '界'.repeat(80);
+      const linkname = '😀'.repeat(80);
+      const header = initTarHeader(null);
+      header.name = name;
+      header.linkname = linkname;
+      header.typeflag = TarTypeFlag.SYMLINK;
+
+      const output = await streamToBuffer(
+        iterableToStream(tar([new TarChunk(new Blob([]).stream(), header)]))
+      );
+      const paxSize = Number.parseInt(
+        new TextDecoder().decode(output.subarray(124, 136)),
+        8
+      );
+      const fileHeaderOffset = 512 + Math.ceil(paxSize / 512) * 512;
+      const fileHeader = output.subarray(
+        fileHeaderOffset,
+        fileHeaderOffset + 512
+      );
+      const decodeField = (from: number, to: number) =>
+        new TextDecoder()
+          .decode(fileHeader.subarray(from, to))
+          .replace(/\0+$/, '');
+
+      expect(decodeField(0, 100)).toBe('界'.repeat(33));
+      expect(decodeField(157, 257)).toBe('😀'.repeat(24));
+
+      const entries: { name: string; linkname: string | null }[] = [];
+      for await (const entry of untar(new Blob([output]).stream())) {
+        entries.push({ name: entry.name, linkname: entry.linkname });
+      }
+      expect(entries).toEqual([{ name, linkname }]);
+    });
   });
 
   describe('encodeOctal field encoding', () => {
