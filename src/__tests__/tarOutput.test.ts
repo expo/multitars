@@ -130,6 +130,59 @@ describe('tar', () => {
         },
       ]);
     });
+
+    it('compresses a long name starting with a slash readable by untar', async () => {
+      // Names over 100 characters go through `indexOfPrefixEnd`, which walks backwards from slash
+      // to slash. `lastIndexOf` clamps a negative position to 0, so a leading slash used to be
+      // found over and over and `idx` never decreased: a synchronous infinite loop with no I/O,
+      // which under a CPU limit surfaces as a killed request rather than an error.
+      const NAME = `/${'a'.repeat(130)}`;
+
+      const tarStream = tar(
+        (async function* () {
+          const file = new Blob(['hello world!']);
+          yield TarFile.from(file.stream(), NAME, { size: file.size });
+        })()
+      );
+
+      const entries: any[] = [];
+      for await (const entry of untar(iterableToStream(tarStream))) {
+        entries.push({
+          name: entry.name,
+          size: entry.size,
+          text: await entry.text(),
+        });
+      }
+
+      expect(entries).toEqual([{ name: NAME, size: 12, text: 'hello world!' }]);
+    });
+
+    it('compresses long names with no usable prefix split readable by untar', async () => {
+      // The same walk also has to terminate when no split satisfies both the 155 byte prefix and
+      // the 100 byte name limits, with or without a leading slash.
+      const NAMES = [
+        `/${'b'.repeat(160)}/${'c'.repeat(60)}`,
+        `${'d'.repeat(160)}/${'e'.repeat(60)}`,
+        `/${'f'.repeat(101)}`,
+        `//${'g'.repeat(120)}`,
+      ];
+
+      const tarStream = tar(
+        (async function* () {
+          for (const name of NAMES) {
+            const file = new Blob(['hello world!']);
+            yield TarFile.from(file.stream(), name, { size: file.size });
+          }
+        })()
+      );
+
+      const names: string[] = [];
+      for await (const entry of untar(iterableToStream(tarStream))) {
+        names.push(entry.name);
+      }
+
+      expect(names).toEqual(NAMES);
+    });
   });
 
   describe('encodeOctal field encoding', () => {

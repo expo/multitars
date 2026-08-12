@@ -101,7 +101,7 @@ function encodeChecksum(bytes: Uint8Array) {
 function indexOfPrefixEnd(path: string): number {
   if (path.length <= 255) {
     let idx = path.length - 1;
-    while ((idx = path.lastIndexOf('/', idx - 1)) > -1) {
+    while ((idx = path.lastIndexOf('/', idx - 1)) > 0) {
       const prefixLen = idx;
       const nameLen = path.length - idx - 1;
       if (prefixLen < MAX_PREFIX_LEN && nameLen < MAX_NAME_LEN) return idx;
