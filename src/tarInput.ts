@@ -265,8 +265,18 @@ async function decodeHeader(
 export async function* untar(
   stream: ReadableStreamLike<Uint8Array>
 ): AsyncGenerator<TarFile | TarChunk> {
-  const gax = initTarHeader(null);
   const reader = new ReadableStreamBlockReader(stream, BLOCK_SIZE);
+  try {
+    yield* readTar(reader);
+  } finally {
+    await reader.close();
+  }
+}
+
+async function* readTar(
+  reader: ReadableStreamBlockReader
+): AsyncGenerator<TarFile | TarChunk> {
+  const gax = initTarHeader(null);
 
   let header: TarHeader | undefined;
   while ((header = await decodeHeader(reader, gax)) != null) {

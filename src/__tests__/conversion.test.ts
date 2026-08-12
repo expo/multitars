@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createReadableStream,
   iterableToStream,
+  streamLikeToIterator,
   streamToAsyncIterable,
 } from '../conversions';
 
@@ -75,6 +76,67 @@ describe('createReadableStream', () => {
     await cancellation;
 
     expect(calls).toEqual(['pull', 'cancel']);
+  });
+});
+
+describe('streamLikeToIterator', () => {
+  it('should release a stream reader after reaching EOF', async () => {
+    const stream = new Blob(['content']).stream();
+    const iterator = streamLikeToIterator(stream);
+
+    while (!(await iterator.next()).done) {
+      // noop
+    }
+
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should release a stream reader after an error', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.error(new Error('test'));
+      },
+    });
+    const iterator = streamLikeToIterator(stream);
+
+    await expect(iterator.next()).rejects.toThrow('test');
+
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should cancel and release a stream reader on return', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const iterator = streamLikeToIterator(stream);
+
+    await iterator.return();
+
+    expect(cancelled).toBe(true);
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should not return an iterator after reaching EOF', async () => {
+    let returned = false;
+    const iterator = streamLikeToIterator({
+      [Symbol.iterator]() {
+        return {
+          next: () => ({ done: true as const, value: undefined }),
+          return: () => {
+            returned = true;
+            return { done: true as const, value: undefined };
+          },
+        };
+      },
+    });
+
+    expect(await iterator.next()).toEqual({ done: true, value: undefined });
+    await iterator.return();
+
+    expect(returned).toBe(false);
   });
 });
 

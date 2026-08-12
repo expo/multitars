@@ -39,6 +39,10 @@ export class ReadableStreamBlockReader {
     this.buffer = null;
   }
 
+  async close(): Promise<void> {
+    await this.next.return();
+  }
+
   /** Outputs the next block of `Uint8Array` data.
    * @remarks
    * Resolves a `Uint8Array` block of `blockSize` length, but will
@@ -80,7 +84,7 @@ export class ReadableStreamBlockReader {
 
     // (3): If `block` isn't filled yet, start filling it with data from the byte stream
     while ((remaining = blockSize - byteLength) > 0) {
-      const { done, value: view } = await this.next();
+      const { done, value: view } = await this.next.next();
       if (done || !view?.byteLength) {
         break;
       } else if (view.byteLength > remaining) {
@@ -144,7 +148,7 @@ export class ReadableStreamBlockReader {
 
     // (3): Otherwise, retrieve the next chunk from the underlying stream
     this.blockLocked = false;
-    const { done, value: view } = await this.next();
+    const { done, value: view } = await this.next.next();
     if (done) {
       return null;
     } else if (view.byteLength > maxSize) {
@@ -189,7 +193,7 @@ export class ReadableStreamBlockReader {
 
     // (3): Otherwise, get more chunks to skip over
     while (remaining > 0) {
-      const { done, value: view } = await this.next();
+      const { done, value: view } = await this.next.next();
       if (done) {
         return remaining;
       } else if (view.byteLength > remaining) {

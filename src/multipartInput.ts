@@ -221,9 +221,19 @@ export async function* parseMultipart(
   stream: ReadableStreamLike<Uint8Array>,
   params: ParseMultipartParams
 ): AsyncGenerator<MultipartPart> {
-  const boundary = convertToBoundaryBytes(params.contentType);
   const reader = new ReadableStreamBlockReader(stream, BLOCK_SIZE);
+  try {
+    yield* readMultipart(reader, params);
+  } finally {
+    await reader.close();
+  }
+}
 
+async function* readMultipart(
+  reader: ReadableStreamBlockReader,
+  params: ParseMultipartParams
+): AsyncGenerator<MultipartPart> {
+  const boundary = convertToBoundaryBytes(params.contentType);
   await expectPreamble(reader, boundary);
 
   let headers: MultipartHeaders | null;

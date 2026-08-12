@@ -9,6 +9,23 @@ vi.mock('../multipartEncoding', async importOriginal => ({
 }));
 
 describe('streamMultipart', () => {
+  it('releases its input stream when iteration stops early', async () => {
+    let cancelled = false;
+    const entries = new ReadableStream<readonly [string, string]>({
+      pull(controller) {
+        controller.enqueue(['name', 'value']);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    for await (const _chunk of streamMultipart(entries)) break;
+
+    expect(entries.locked).toBe(false);
+    expect(cancelled).toBe(true);
+  });
+
   it('creates a multipart stream of strings', async () => {
     const data = streamMultipart(
       (async function* () {

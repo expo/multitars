@@ -6,6 +6,25 @@ import { TarFile, TarTypeFlag, initTarHeader } from '../tarShared';
 import { iterableToStream, streamToBuffer } from './utils';
 
 describe('tar', () => {
+  it('releases its input stream when iteration stops early', async () => {
+    let cancelled = false;
+    const entries = new ReadableStream<TarFile>({
+      pull(controller) {
+        controller.enqueue(
+          TarFile.from(new Blob([]).stream(), 'test.txt', { size: 0 })
+        );
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    for await (const _chunk of tar(entries)) break;
+
+    expect(entries.locked).toBe(false);
+    expect(cancelled).toBe(true);
+  });
+
   describe('tested via untar()', () => {
     it('compresses a single file readable by untar', async () => {
       const NOW = 1751629979000;
