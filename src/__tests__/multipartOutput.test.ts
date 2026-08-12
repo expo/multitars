@@ -49,6 +49,32 @@ describe('streamMultipart', () => {
     `);
   });
 
+  it('does not reuse chunks that may be transferred by a stream consumer', async () => {
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
+    for await (const chunk of streamMultipart([
+      ['a', '1'],
+      ['b', '2'],
+    ])) {
+      chunks.push(
+        chunk.buffer.byteLength
+          ? structuredClone(chunk, { transfer: [chunk.buffer] })
+          : new Uint8Array()
+      );
+    }
+
+    const response = new Response(new Blob(chunks), {
+      headers: {
+        'Content-Type': 'multipart/form-data; boundary=----formdata-multitars',
+      },
+    });
+    const form = await response.formData();
+
+    expect([...form]).toEqual([
+      ['a', '1'],
+      ['b', '2'],
+    ]);
+  });
+
   it('creates a multipart stream of files', async () => {
     const data = streamMultipart(
       (async function* () {
