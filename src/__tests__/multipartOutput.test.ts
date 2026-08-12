@@ -143,4 +143,18 @@ describe('streamMultipart', () => {
       "
     `);
   });
+
+  it('rejects a part body longer than its declared size', async () => {
+    const part = new MultipartPart(['too long'], 'file.txt', { size: 1 });
+    const data = streamMultipart([['file', part]]);
+
+    await expect(streamToText(iterableToStream(data))).rejects.toThrow(/size/i);
+  });
+
+  it('rejects a part body shorter than its declared size', async () => {
+    const part = new MultipartPart(['x'], 'file.txt', { size: 8 });
+    const data = streamMultipart([['file', part]]);
+
+    await expect(streamToText(iterableToStream(data))).rejects.toThrow(/size/i);
+  });
 });

@@ -205,6 +205,26 @@ describe('tar', () => {
 
       expect(entries).toEqual(['link', 'target.txt']);
     });
+
+    it('rejects a file body longer than its declared size', async () => {
+      const file = TarFile.from(new Blob(['too long']).stream(), 'file.txt', {
+        size: 1,
+      });
+
+      await expect(
+        streamToBuffer(iterableToStream(tar([file])))
+      ).rejects.toThrow(/size/i);
+    });
+
+    it('rejects a file body shorter than its declared size', async () => {
+      const file = TarFile.from(new Blob(['x']).stream(), 'file.txt', {
+        size: 8,
+      });
+
+      await expect(
+        streamToBuffer(iterableToStream(tar([file])))
+      ).rejects.toThrow(/size/i);
+    });
   });
 
   describe('encodeOctal field encoding', () => {
@@ -219,7 +239,10 @@ describe('tar', () => {
 
       const tarStream = tar(
         (async function* () {
-          yield new TarFile(new Blob([]).stream(), header);
+          yield new TarFile(
+            new Blob([new Uint8Array(header.size)]).stream(),
+            header
+          );
         })()
       );
       const output = await streamToBuffer(iterableToStream(tarStream));
