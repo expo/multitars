@@ -95,12 +95,19 @@ export function streamLikeToIterator<T>(
   const iterator = iterable[Symbol.asyncIterator]
     ? iterable[Symbol.asyncIterator]()
     : iterable[Symbol.iterator]();
+  let done = false;
   return {
     async next() {
-      return await iterator.next();
+      if (done) return { done: true };
+      const result = await iterator.next();
+      done = !!result.done;
+      return result;
     },
     async return() {
-      await iterator.return?.();
+      if (!done) {
+        done = true;
+        await iterator.return?.();
+      }
     },
   };
 }

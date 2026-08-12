@@ -3,6 +3,7 @@ import { encoder } from './shared';
 import {
   streamToAsyncIterable,
   type ReadableStreamLike,
+  type StreamIterator,
   streamLikeToIterator,
 } from './conversions';
 import { MultipartPart } from './multipartShared';
@@ -75,6 +76,16 @@ export async function* streamMultipart(
   entries: ReadableStreamLike<FormEntry>
 ): AsyncGenerator<Uint8Array<ArrayBuffer>> {
   const iterator = streamLikeToIterator(entries);
+  try {
+    yield* writeMultipart(iterator);
+  } finally {
+    await iterator.return();
+  }
+}
+
+async function* writeMultipart(
+  iterator: StreamIterator<FormEntry>
+): AsyncGenerator<Uint8Array<ArrayBuffer>> {
   let result: Awaited<ReturnType<typeof iterator.next>>;
   while (!(result = await iterator.next()).done && result.value) {
     const name = result.value[0];
