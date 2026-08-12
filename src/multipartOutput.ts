@@ -8,7 +8,6 @@ import {
 import { MultipartPart } from './multipartShared';
 
 const CRLF = '\r\n';
-const CRLF_BYTES = encoder.encode(CRLF);
 const BOUNDARY_HYPHEN_CHARS = '--';
 
 const FORM_FOOTER =
@@ -96,7 +95,7 @@ export async function* streamMultipart(
       yield encoder.encode(makeFormHeader({ name }, undefined));
       yield typeof value === 'string' ? encoder.encode(value) : value;
     }
-    yield CRLF_BYTES;
+    yield encoder.encode(CRLF);
   }
   yield encoder.encode(FORM_FOOTER);
 }
