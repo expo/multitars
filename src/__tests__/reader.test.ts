@@ -11,6 +11,27 @@ import {
   streamText,
 } from './utils';
 
+function gatedStream(chunks: Uint8Array[]) {
+  let release: () => void = () => {};
+  const gate = () => new Promise<void>(resolve => (release = resolve));
+  let pending = gate();
+  let index = 0;
+
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        await pending;
+        pending = gate();
+        if (index >= chunks.length) return controller.close();
+        controller.enqueue(chunks[index++]);
+      },
+    },
+    { highWaterMark: 0 }
+  );
+
+  return { stream, release: () => release() };
+}
+
 // NOTE(@kitten): This is pretty dense set of tests, but they simply are designed
 // to reach 100% test coverage (pnpm test --coverage)
 describe(ReadableStreamBlockReader, () => {
@@ -243,6 +264,41 @@ describe(ReadableStreamBlockReader, () => {
     await expect(reader.read()).resolves.toEqual(new Uint8Array([2, 3, 4, 5]));
     await expect(reader.read()).resolves.toEqual(new Uint8Array([6, 7]));
     await expect(reader.read()).resolves.toEqual(null);
+  });
+
+  it('reaches EOF after overlapping pull and skip calls', async () => {
+    const bytes = new Uint8Array(64);
+    for (let idx = 0; idx < bytes.length; idx++) bytes[idx] = idx;
+    const chunks = [
+      bytes.subarray(0, 16),
+      bytes.subarray(16, 32),
+      bytes.subarray(32),
+    ];
+    const gated = gatedStream(chunks);
+    const reader = new ReadableStreamBlockReader(gated.stream, 16);
+
+    const pulled = reader.pull(8);
+    const skipped = reader.skip(8);
+    for (let idx = 0; idx <= chunks.length; idx++) {
+      gated.release();
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    await expect(Promise.allSettled([pulled, skipped])).resolves.toEqual([
+      expect.objectContaining({ status: 'fulfilled' }),
+      expect.objectContaining({ status: 'fulfilled' }),
+    ]);
+
+    let reads = 0;
+    let block: Uint8Array | null;
+    do {
+      const reading = reader.read();
+      gated.release();
+      block = await reading;
+      reads++;
+    } while (block && reads < 32);
+
+    expect(block).toBeNull();
+    expect(reads).toBeLessThan(32);
   });
 });
 
