@@ -180,6 +180,12 @@ function encodePax(header: TarHeader): Uint8Array<ArrayBuffer> | null {
   return output ? encoder.encode(output) : null;
 }
 
+function truncateHeaderString(bytes: Uint8Array): string {
+  let end = MAX_NAME_LEN - 1;
+  while ((bytes[end] & 0xc0) === 0x80) end--;
+  return decoder.decode(bytes.subarray(0, end));
+}
+
 function prepareHeaderStrings(header: TarHeader): void {
   if (
     header.name.length > MIN_NAME_OVERFLOW_LEN &&
@@ -193,7 +199,7 @@ function prepareHeaderStrings(header: TarHeader): void {
         header.name = decoder.decode(name.subarray(idx + 1));
       } else {
         header._paxName = header.name;
-        header.name = 'PaxHeader/entry';
+        header.name = truncateHeaderString(name);
       }
     }
   }
@@ -205,7 +211,7 @@ function prepareHeaderStrings(header: TarHeader): void {
     const linkname = encoder.encode(header.linkname);
     if (linkname.byteLength > MAX_NAME_LEN) {
       header._paxLinkName = header.linkname;
-      header.linkname = 'PaxHeader/entry';
+      header.linkname = truncateHeaderString(linkname);
     }
   }
 }
