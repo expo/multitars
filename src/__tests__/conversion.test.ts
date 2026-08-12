@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { createReadableStream, iterableToStream } from '../conversions';
+import {
+  createReadableStream,
+  iterableToStream,
+  streamToAsyncIterable,
+} from '../conversions';
+
+function disableAsyncIteration<T>(stream: ReadableStream<T>) {
+  Object.defineProperty(stream, Symbol.asyncIterator, { value: undefined });
+  return stream;
+}
 
 describe('createReadableStream', () => {
   const makeStream = () => {
@@ -66,6 +75,104 @@ describe('createReadableStream', () => {
     await cancellation;
 
     expect(calls).toEqual(['pull', 'cancel']);
+  });
+});
+
+describe('streamToAsyncIterable', () => {
+  it('should release the reader after reaching the end of a fallback stream', async () => {
+    const stream = disableAsyncIteration(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(1);
+          controller.close();
+        },
+      })
+    );
+
+    const values: number[] = [];
+    for await (const value of streamToAsyncIterable(stream)) values.push(value);
+
+    expect(values).toEqual([1]);
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should cancel and release a fallback stream after an early return', async () => {
+    const cancellations: unknown[] = [];
+    const stream = disableAsyncIteration(
+      new ReadableStream({
+        pull(controller) {
+          controller.enqueue(1);
+        },
+        cancel(reason) {
+          cancellations.push(reason);
+        },
+      })
+    );
+
+    for await (const _value of streamToAsyncIterable(stream)) break;
+
+    expect(cancellations).toEqual([undefined]);
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should cancel and release a fallback stream after a consumer error', async () => {
+    const cancellations: unknown[] = [];
+    const stream = disableAsyncIteration(
+      new ReadableStream({
+        pull(controller) {
+          controller.enqueue(1);
+        },
+        cancel(reason) {
+          cancellations.push(reason);
+        },
+      })
+    );
+
+    await expect(async () => {
+      for await (const _value of streamToAsyncIterable(stream)) {
+        throw new Error('ohno');
+      }
+    }).rejects.toThrow('ohno');
+
+    expect(cancellations).toEqual([undefined]);
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should release a fallback stream when cancellation rejects', async () => {
+    const stream = disableAsyncIteration(
+      new ReadableStream({
+        pull(controller) {
+          controller.enqueue(1);
+        },
+        cancel() {
+          throw new Error('cancel failed');
+        },
+      })
+    );
+
+    await expect(async () => {
+      for await (const _value of streamToAsyncIterable(stream)) break;
+    }).rejects.toThrow('cancel failed');
+
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should release a fallback stream after a read error', async () => {
+    const stream = disableAsyncIteration(
+      new ReadableStream({
+        pull() {
+          throw new Error('read failed');
+        },
+      })
+    );
+
+    await expect(async () => {
+      for await (const _value of streamToAsyncIterable(stream)) {
+        // noop
+      }
+    }).rejects.toThrow('read failed');
+
+    expect(stream.locked).toBe(false);
   });
 });
 

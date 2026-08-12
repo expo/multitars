@@ -53,10 +53,22 @@ export function streamToAsyncIterable<T>(
   if (!stream[Symbol.asyncIterator]) {
     return (async function* () {
       const reader = stream.getReader();
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) return chunk.value;
-        yield chunk.value;
+      let done = false;
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) {
+            done = true;
+            return chunk.value;
+          }
+          yield chunk.value;
+        }
+      } finally {
+        try {
+          if (!done) await reader.cancel();
+        } finally {
+          reader.releaseLock();
+        }
       }
     })();
   } else {
