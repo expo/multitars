@@ -53,6 +53,29 @@ function makeTarball(files: Iterable<TestFile>): ReadableStream<any> {
 }
 
 describe('untar', () => {
+  it('releases the input stream when parsing fails', async () => {
+    const tarball = new Blob([new Uint8Array([1])]).stream();
+
+    await expect(async () => {
+      for await (const _entry of untar(tarball)) {
+        // noop
+      }
+    }).rejects.toThrow();
+
+    expect(tarball.locked).toBe(false);
+  });
+
+  it('releases the input stream when iteration stops early', async () => {
+    const tarball = makeTarball([
+      { name: 'first.txt', data: 'first' },
+      { name: 'second.txt', data: 'second' },
+    ]);
+
+    for await (const _entry of untar(tarball)) break;
+
+    expect(tarball.locked).toBe(false);
+  });
+
   it('extract a tarball successfully (unchunked)', async () => {
     const entries: any[] = [];
 

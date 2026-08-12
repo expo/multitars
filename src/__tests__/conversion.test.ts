@@ -82,12 +82,40 @@ describe('createReadableStream', () => {
 describe('streamLikeToIterator', () => {
   it('should release a stream reader after reaching EOF', async () => {
     const stream = new Blob(['content']).stream();
-    const next = streamLikeToIterator(stream);
+    const iterator = streamLikeToIterator(stream);
 
-    while (!(await next()).done) {
+    while (!(await iterator.next()).done) {
       // noop
     }
 
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should release a stream reader after an error', async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.error(new Error('test'));
+      },
+    });
+    const iterator = streamLikeToIterator(stream);
+
+    await expect(iterator.next()).rejects.toThrow('test');
+
+    expect(stream.locked).toBe(false);
+  });
+
+  it('should cancel and release a stream reader on return', async () => {
+    let cancelled = false;
+    const stream = new ReadableStream({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const iterator = streamLikeToIterator(stream);
+
+    await iterator.return();
+
+    expect(cancelled).toBe(true);
     expect(stream.locked).toBe(false);
   });
 });

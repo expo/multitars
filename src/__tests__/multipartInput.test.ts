@@ -24,6 +24,38 @@ function chunk(
 }
 
 describe('parseMultipart', () => {
+  it('releases the input stream when parsing fails', async () => {
+    const body = new Blob([]).stream();
+
+    await expect(async () => {
+      for await (const _entry of parseMultipart(body, {
+        contentType: 'multipart/form-data; boundary=test',
+      })) {
+        // noop
+      }
+    }).rejects.toThrow();
+
+    expect(body.locked).toBe(false);
+  });
+
+  it('releases the input stream when iteration stops early', async () => {
+    const form = new FormData();
+    form.set('first', 'first');
+    form.set('second', 'second');
+    const request = new Request('http://test.com', {
+      method: 'POST',
+      body: form as any,
+    });
+    const body = request.body!;
+
+    const entries = parseMultipart(body, {
+      contentType: request.headers.get('Content-Type')!,
+    });
+    for await (const _entry of entries) break;
+
+    expect(body.locked).toBe(false);
+  });
+
   it('extracts a file from a multipart body successfully (unchunked)', async () => {
     const form = new FormData();
     form.set('filename-a.txt', new File(['test content a'], 'filename-a.txt'));
