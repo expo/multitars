@@ -80,31 +80,29 @@ type IteratorReadResult<T> =
   | { done: false; value: T }
   | { done: true; value?: T | undefined };
 
-export type StreamIterator<T> = () => Promise<IteratorReadResult<T>>;
+export interface StreamIterator<T> {
+  next(): Promise<IteratorReadResult<T>>;
+  return(): Promise<void>;
+}
 
 export function streamLikeToIterator<T>(
   stream: ReadableStreamLike<T>
 ): StreamIterator<T> {
-  if ('getReader' in stream && typeof stream.getReader === 'function') {
-    const reader = stream.getReader();
-    let done = false;
-    return async function read() {
-      if (done) return { done: true };
-      const result = await reader.read();
-      if (result.done) {
-        done = true;
-        reader.releaseLock();
-      }
-      return result;
-    };
-  } else {
-    const iterator = stream[Symbol.asyncIterator]
-      ? stream[Symbol.asyncIterator]()
-      : stream[Symbol.iterator]();
-    return async function next() {
+  const iterable =
+    'getReader' in stream && typeof stream.getReader === 'function'
+      ? streamToAsyncIterable(stream)
+      : stream;
+  const iterator = iterable[Symbol.asyncIterator]
+    ? iterable[Symbol.asyncIterator]()
+    : iterable[Symbol.iterator]();
+  return {
+    async next() {
       return await iterator.next();
-    };
-  }
+    },
+    async return() {
+      await iterator.return?.();
+    },
+  };
 }
 
 interface SafeIteratorSourceOptions {
