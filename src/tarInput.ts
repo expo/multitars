@@ -281,6 +281,9 @@ async function* readTar(
   let header: TarHeader | undefined;
   while ((header = await decodeHeader(reader, gax)) != null) {
     const size = header._paxSize ?? header.size;
+    if (!Number.isSafeInteger(size) || size < 0) {
+      throw new Error(`Invalid Tar: Invalid entry size ${size}`);
+    }
     const pad = blockPad(size);
     let consumedTrailer = pad === 0;
     let remaining = size;
