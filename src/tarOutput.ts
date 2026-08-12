@@ -5,7 +5,7 @@ import {
   streamToSizedAsyncIterable,
 } from './conversions';
 
-import { encoder } from './shared';
+import { decoder, encoder } from './shared';
 
 import {
   BLOCK_SIZE,
@@ -21,6 +21,7 @@ import {
 
 const MAX_NAME_LEN = 100;
 const MAX_PREFIX_LEN = 155;
+const MIN_NAME_OVERFLOW_LEN = 33;
 const MAGIC = 'ustar\0' + '00';
 const PAD = new Uint8Array(BLOCK_SIZE);
 
@@ -41,6 +42,8 @@ function modeToType(mode: number) {
       return TarTypeFlag.FILE;
   }
 }
+
+const nonAsciiRe = /[^\x00-\x7f]/;
 
 function encodeString(
   target: Uint8Array,
@@ -98,13 +101,12 @@ function encodeChecksum(bytes: Uint8Array) {
 // Needed if a path is longer than 100 characters
 // It attempts to split the path at a slash into a prefix and name
 // The prefix capacity is 155 and the name is 100
-function indexOfPrefixEnd(path: string): number {
-  if (path.length <= 255) {
-    let idx = path.length - 1;
-    while ((idx = path.lastIndexOf('/', idx - 1)) > 0) {
-      const prefixLen = idx;
-      const nameLen = path.length - idx - 1;
-      if (prefixLen < MAX_PREFIX_LEN && nameLen < MAX_NAME_LEN) return idx;
+function indexOfPrefixEnd(path: Uint8Array): number {
+  if (path.byteLength <= MAX_PREFIX_LEN + MAX_NAME_LEN) {
+    let idx = path.byteLength;
+    while ((idx = path.lastIndexOf(47 /*'/'*/, idx - 1)) > 0) {
+      if (idx < MAX_PREFIX_LEN && path.byteLength - idx - 1 < MAX_NAME_LEN)
+        return idx;
     }
   }
   return -1;
@@ -131,20 +133,12 @@ function encodeBase(target: Uint8Array, header: TarHeader): void {
   | devminor   | 337 B  | 8 B    |                            |
   | prefix     | 345 B  | 155 B  | NUL-terminated if NUL fits |
   */
-  let name = header.name;
-  if (!header._paxName && !header._longName && name.length > MAX_NAME_LEN) {
-    const idx = indexOfPrefixEnd(name);
-    if (idx > -1) {
-      name = name.slice(idx + 1);
-    }
-  }
-
   if (!header.typeflag) header.typeflag = modeToType(header.mode);
   if (!header.mode)
     header.mode = header.typeflag === TarTypeFlag.DIRECTORY ? 0o755 : 0o644;
   if (!header.mtime) header.mtime = Math.floor(Date.now() / 1000);
 
-  encodeString(target, 0, 100, name);
+  encodeString(target, 0, 100, header.name);
   encodeOctal(target, 100, 108, header.mode & 0o7777);
   encodeOctal(target, 108, 116, header.uid);
   encodeOctal(target, 116, 124, header.gid);
@@ -186,10 +180,34 @@ function encodePax(header: TarHeader): Uint8Array<ArrayBuffer> | null {
   return output ? encoder.encode(output) : null;
 }
 
-function paxName(name: string) {
-  const idx = name.lastIndexOf('/');
-  const basename = idx > -1 ? name.slice(idx) : name;
-  return `PaxHeader/${basename.slice(-99)}`;
+function prepareHeaderStrings(header: TarHeader): void {
+  if (
+    header.name.length > MIN_NAME_OVERFLOW_LEN &&
+    (header.name.length > MAX_NAME_LEN || nonAsciiRe.test(header.name))
+  ) {
+    const name = encoder.encode(header.name);
+    if (name.byteLength > MAX_NAME_LEN) {
+      const idx = indexOfPrefixEnd(name);
+      if (idx > -1) {
+        header._prefix = decoder.decode(name.subarray(0, idx));
+        header.name = decoder.decode(name.subarray(idx + 1));
+      } else {
+        header._paxName = header.name;
+        header.name = 'PaxHeader/entry';
+      }
+    }
+  }
+  if (
+    header.linkname &&
+    header.linkname.length > MIN_NAME_OVERFLOW_LEN &&
+    (header.linkname.length > MAX_NAME_LEN || nonAsciiRe.test(header.linkname))
+  ) {
+    const linkname = encoder.encode(header.linkname);
+    if (linkname.byteLength > MAX_NAME_LEN) {
+      header._paxLinkName = header.linkname;
+      header.linkname = 'PaxHeader/entry';
+    }
+  }
 }
 
 export async function* tar(
@@ -228,21 +246,7 @@ async function* writeTar(
       header.size = 0;
     }
 
-    if (header.name.length > MAX_NAME_LEN) {
-      const idx = indexOfPrefixEnd(header.name);
-      if (idx > -1) {
-        header._prefix = header.name.slice(0, idx);
-        header.name = header.name.slice(idx + 1);
-      } else {
-        header._paxName = header.name;
-        header.name = paxName(header.name);
-      }
-    }
-
-    if (header.linkname && header.linkname.length > MAX_NAME_LEN) {
-      header._paxLinkName = header.linkname;
-      header.linkname = paxName(header.name);
-    }
+    prepareHeaderStrings(header);
 
     const pax = encodePax(header);
     if (pax) {
