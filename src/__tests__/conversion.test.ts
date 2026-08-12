@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createReadableStream,
   iterableToStream,
+  streamLikeToIterator,
   streamToAsyncIterable,
 } from '../conversions';
 
@@ -75,6 +76,19 @@ describe('createReadableStream', () => {
     await cancellation;
 
     expect(calls).toEqual(['pull', 'cancel']);
+  });
+});
+
+describe('streamLikeToIterator', () => {
+  it('should release a stream reader after reaching EOF', async () => {
+    const stream = new Blob(['content']).stream();
+    const next = streamLikeToIterator(stream);
+
+    while (!(await next()).done) {
+      // noop
+    }
+
+    expect(stream.locked).toBe(false);
   });
 });
 
