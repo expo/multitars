@@ -50,7 +50,7 @@ function encodeString(
   to: number,
   value: string | null | undefined
 ) {
-  if (value) encoder.encodeInto(`${value}\0`, target.subarray(from, to));
+  if (value) encoder.encodeInto(value, target.subarray(from, to));
 }
 
 function encodeOctal(
