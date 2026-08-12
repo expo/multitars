@@ -264,7 +264,7 @@ async function* writeTar(
       await stream.cancel();
     }
 
-    const pad = blockPad(entry.size);
+    const pad = blockPad(header.size);
     if (pad) yield PAD.subarray(0, pad);
   }
 
