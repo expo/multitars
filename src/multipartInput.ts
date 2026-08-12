@@ -206,7 +206,7 @@ async function decodeHeaders(
       break;
     }
   }
-  if (byteLength > MAX_HEADER_SIZE) {
+  if (byteLength > MAX_HEADERS_SIZE) {
     throw new Error(
       'Invalid Multipart Headers: Headers exceeded their maximum length of 32kB'
     );
