@@ -29,10 +29,13 @@ const makeFormHeader = (
   part: Blob | MultipartPart | undefined
 ): string => {
   let header = BOUNDARY_HYPHEN_CHARS + BOUNDARY_ID + CRLF;
-  header += `Content-Disposition: form-data; name="${encodeName(params.name)}"`;
+  const name = encodeName(params.name);
+  header += `Content-Disposition: form-data; name="${name}"`;
 
   if (params.filename != null) {
-    header += `; filename="${encodeName(params.filename)}"`;
+    const filename =
+      params.filename === params.name ? name : encodeName(params.filename);
+    header += `; filename="${filename}"`;
   }
 
   if (part) {
