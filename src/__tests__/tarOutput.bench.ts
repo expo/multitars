@@ -1,4 +1,5 @@
 import { bench, describe } from 'vitest';
+import { createTarPacker } from 'modern-tar';
 
 import * as multitars from './fixtures/lib';
 
@@ -8,6 +9,12 @@ const nestedNames = Array.from(
   { length: 100 },
   (_, index) => `${'directory/'.repeat(index % 20)}file-${index}-界.txt`
 );
+
+async function consume(chunks: AsyncIterable<Uint8Array>) {
+  let byteLength = 0;
+  for await (const chunk of chunks) byteLength += chunk.byteLength;
+  if (!byteLength) throw new Error('Expected tar output');
+}
 
 describe.each([
   { name: '2500 x 1KB', count: 2_500, content: smallContent },
@@ -31,10 +38,24 @@ describe.each([
       }
     })();
 
-    let byteLength = 0;
-    for await (const chunk of multitars.tar(entries)) {
-      byteLength += chunk.byteLength;
+    await consume(multitars.tar(entries));
+  });
+
+  bench('modern-tar', async () => {
+    const { readable, controller } = createTarPacker();
+    const consumed = consume(readable);
+    const names = input.names;
+    const count = names?.length ?? input.count!;
+    for (let index = 0; index < count; index++) {
+      await input.content.stream().pipeTo(
+        controller.add({
+          name: names?.[index] ?? `file-${index}.txt`,
+          size: input.content.size,
+          type: 'file',
+        })
+      );
     }
-    if (!byteLength) throw new Error('Expected tar output');
+    controller.finalize();
+    await consumed;
   });
 });
