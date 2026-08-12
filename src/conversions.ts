@@ -81,31 +81,43 @@ export async function* streamToSizedAsyncIterable<T extends ArrayBufferView>(
   expectedSize: number | null,
   label: string
 ): AsyncGenerator<T> {
-  const iterable = streamToAsyncIterable(stream);
   if (expectedSize == null) {
-    yield* iterable;
+    yield* streamToAsyncIterable(stream);
   } else {
+    const reader = stream.getReader();
     let remaining = expectedSize;
-    for await (const chunk of iterable) {
-      remaining -= chunk.byteLength;
-      if (remaining < 0) {
-        throw new Error(`${label} body exceeds declared size`);
+    let done = false;
+    try {
+      while (true) {
+        const result = await reader.read();
+        if (result.done) {
+          done = true;
+          break;
+        }
+        remaining -= result.value.byteLength;
+        if (remaining < 0) {
+          throw new Error(`${label} body exceeds declared size`);
+        }
+        yield result.value;
       }
-      yield chunk;
-    }
-    if (remaining > 0) {
-      throw new Error(`${label} body is shorter than declared size`);
+      if (remaining > 0) {
+        throw new Error(`${label} body is shorter than declared size`);
+      }
+    } finally {
+      try {
+        if (!done) await reader.cancel();
+      } finally {
+        reader.releaseLock();
+      }
     }
   }
 }
 
-type IteratorReadResult<T> =
-  | { done: false; value: T }
-  | { done: true; value?: T | undefined };
+type IteratorReadResult<T> = IteratorResult<T, undefined>;
 
-export interface StreamIterator<T> {
+export interface StreamIterator<T> extends AsyncIterable<T> {
   next(): Promise<IteratorReadResult<T>>;
-  return(): Promise<void>;
+  return(): Promise<{ done: true; value: undefined }>;
 }
 
 export function streamLikeToIterator<T>(
@@ -119,20 +131,25 @@ export function streamLikeToIterator<T>(
     ? iterable[Symbol.asyncIterator]()
     : iterable[Symbol.iterator]();
   let done = false;
-  return {
+  const output: StreamIterator<T> = {
+    [Symbol.asyncIterator]() {
+      return output;
+    },
     async next() {
-      if (done) return { done: true };
+      if (done) return { done: true, value: undefined };
       const result = await iterator.next();
       done = !!result.done;
-      return result;
+      return result.done ? { done: true, value: undefined } : result;
     },
     async return() {
       if (!done) {
         done = true;
         await iterator.return?.();
       }
+      return { done: true, value: undefined };
     },
   };
+  return output;
 }
 
 interface SafeIteratorSourceOptions {

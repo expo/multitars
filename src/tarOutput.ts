@@ -1,6 +1,5 @@
 import {
   type ReadableStreamLike,
-  type StreamIterator,
   streamLikeToIterator,
   streamToSizedAsyncIterable,
 } from './conversions';
@@ -219,20 +218,7 @@ function prepareHeaderStrings(header: TarHeader): void {
 export async function* tar(
   entries: ReadableStreamLike<TarChunk | TarFile>
 ): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-  const iterator = streamLikeToIterator(entries);
-  try {
-    yield* writeTar(iterator);
-  } finally {
-    await iterator.return();
-  }
-}
-
-async function* writeTar(
-  iterator: StreamIterator<TarChunk | TarFile>
-): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-  let result: Awaited<ReturnType<typeof iterator.next>>;
-  while (!(result = await iterator.next()).done && result.value) {
-    const { value: entry } = result;
+  for await (const entry of streamLikeToIterator(entries)) {
     const header = initTarHeader(entry);
     if (!Number.isSafeInteger(header.size) || header.size < 0) {
       throw new Error(

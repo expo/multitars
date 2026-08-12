@@ -3,7 +3,6 @@ import { encoder } from './shared';
 import {
   streamToSizedAsyncIterable,
   type ReadableStreamLike,
-  type StreamIterator,
   streamLikeToIterator,
 } from './conversions';
 import { MultipartPart } from './multipartShared';
@@ -75,21 +74,7 @@ export const multipartContentType = `multipart/form-data; boundary=${BOUNDARY_ID
 export async function* streamMultipart(
   entries: ReadableStreamLike<FormEntry>
 ): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-  const iterator = streamLikeToIterator(entries);
-  try {
-    yield* writeMultipart(iterator);
-  } finally {
-    await iterator.return();
-  }
-}
-
-async function* writeMultipart(
-  iterator: StreamIterator<FormEntry>
-): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-  let result: Awaited<ReturnType<typeof iterator.next>>;
-  while (!(result = await iterator.next()).done && result.value) {
-    const name = result.value[0];
-    const value = result.value[1];
+  for await (const [name, value] of streamLikeToIterator(entries)) {
     if (isBlob(value)) {
       yield encoder.encode(
         makeFormHeader(
