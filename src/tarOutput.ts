@@ -194,9 +194,9 @@ function paxName(name: string) {
 export async function* tar(
   entries: ReadableStreamLike<TarChunk | TarFile>
 ): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-  const next = streamLikeToIterator(entries);
-  let result: Awaited<ReturnType<typeof next>>;
-  while (!(result = await next()).done && result.value) {
+  const iterator = streamLikeToIterator(entries);
+  let result: Awaited<ReturnType<typeof iterator.next>>;
+  while (!(result = await iterator.next()).done && result.value) {
     const { value: entry } = result;
     const header = initTarHeader(entry);
     if (!Number.isSafeInteger(header.size) || header.size < 0) {

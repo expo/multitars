@@ -74,9 +74,9 @@ export const multipartContentType = `multipart/form-data; boundary=${BOUNDARY_ID
 export async function* streamMultipart(
   entries: ReadableStreamLike<FormEntry>
 ): AsyncGenerator<Uint8Array<ArrayBuffer>> {
-  const next = streamLikeToIterator(entries);
-  let result: Awaited<ReturnType<typeof next>>;
-  while (!(result = await next()).done && result.value) {
+  const iterator = streamLikeToIterator(entries);
+  let result: Awaited<ReturnType<typeof iterator.next>>;
+  while (!(result = await iterator.next()).done && result.value) {
     const name = result.value[0];
     const value = result.value[1];
     if (isBlob(value)) {
