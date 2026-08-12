@@ -97,6 +97,42 @@ describe('parseMultipart', () => {
     }
   });
 
+  it('accepts aggregate headers at exactly the 32kB limit', async () => {
+    const boundary = 'test-boundary';
+    const disposition = 'Content-Disposition: form-data; name="test"';
+    const first = `X-First: ${'a'.repeat(10_000)}`;
+    const second = `X-Second: ${'b'.repeat(10_000)}`;
+    const thirdPrefix = 'X-Third: ';
+    const third =
+      thirdPrefix +
+      'b'.repeat(
+        32_000 -
+          disposition.length -
+          first.length -
+          second.length -
+          thirdPrefix.length -
+          4 * 2 /* CRLF */
+      );
+    const body = [
+      `--${boundary}`,
+      disposition,
+      first,
+      second,
+      third,
+      '',
+      'content',
+      `--${boundary}--`,
+      '',
+    ].join('\r\n');
+
+    const entries = parseMultipart(new Blob([body]).stream(), {
+      contentType: `multipart/form-data; boundary=${boundary}`,
+    });
+    for await (const entry of entries) {
+      await expect(entry.text()).resolves.toBe('content');
+    }
+  });
+
   it('decodes a multibyte header split across input blocks', async () => {
     const boundary = 'test-boundary';
     const value = '界'.repeat(2_000);
