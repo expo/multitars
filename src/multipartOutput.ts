@@ -1,7 +1,7 @@
 import { encodeName, BOUNDARY_ID } from './multipartEncoding';
 import { encoder } from './shared';
 import {
-  streamToAsyncIterable,
+  streamToSizedAsyncIterable,
   type ReadableStreamLike,
   type StreamIterator,
   streamLikeToIterator,
@@ -97,7 +97,12 @@ async function* writeMultipart(
           value
         )
       );
-      yield* streamToAsyncIterable(value.stream());
+      const stream = value.stream();
+      yield* streamToSizedAsyncIterable(
+        stream,
+        value.size || null,
+        'Invalid Multipart: Part'
+      );
     } else {
       yield encoder.encode(makeFormHeader({ name }, undefined));
       yield typeof value === 'string' ? encoder.encode(value) : value;

@@ -76,6 +76,29 @@ export function streamToAsyncIterable<T>(
   }
 }
 
+export async function* streamToSizedAsyncIterable<T extends ArrayBufferView>(
+  stream: ReadableStream<T>,
+  expectedSize: number | null,
+  label: string
+): AsyncGenerator<T> {
+  const iterable = streamToAsyncIterable(stream);
+  if (expectedSize == null) {
+    yield* iterable;
+  } else {
+    let remaining = expectedSize;
+    for await (const chunk of iterable) {
+      remaining -= chunk.byteLength;
+      if (remaining < 0) {
+        throw new Error(`${label} body exceeds declared size`);
+      }
+      yield chunk;
+    }
+    if (remaining > 0) {
+      throw new Error(`${label} body is shorter than declared size`);
+    }
+  }
+}
+
 type IteratorReadResult<T> =
   | { done: false; value: T }
   | { done: true; value?: T | undefined };
