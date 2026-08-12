@@ -1,6 +1,6 @@
 {
   "name": "multitars",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Multipart and Tar utilities for the Web Streams API",
   "author": "Phil Pluckthun <phil@kitten.sh>",
   "source": "./src/index.ts",

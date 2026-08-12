@@ -1,5 +1,36 @@
 # multitars
 
+## 1.0.2
+
+### Patch Changes
+
+- ⚠️ Fix tar and multipart cases that used UTF-16 instead of UTF-8 length calculations
+  Submitted by [@kitten](https://github.com/kitten) (See [#33](https://github.com/expo/multitars/pull/33))
+- Enforce declared `File` sizes for multipart/tar outputs, to avoid corrupted tarballs
+  Submitted by [@kitten](https://github.com/kitten) (See [#31](https://github.com/expo/multitars/pull/31))
+- Close stream iterators after streams are done
+  Submitted by [@kitten](https://github.com/kitten) (See [#35](https://github.com/expo/multitars/pull/35))
+- ⚠️ Fix multipart corruption when headers match limit exactly
+  Submitted by [@kitten](https://github.com/kitten) (See [#38](https://github.com/expo/multitars/pull/38))
+- Don't ignore PAX zero-size override
+  Submitted by [@kitten](https://github.com/kitten) (See [#32](https://github.com/expo/multitars/pull/32))
+- ⚠️ Fix incorrect combined header limit being applied
+  Submitted by [@kitten](https://github.com/kitten) (See [#34](https://github.com/expo/multitars/pull/34))
+- ⚠️ Fix tar input's header being concurrently readable with a cancellation padding skip. This meant that partially reading a file may have caused issues and misalignment on the next file access
+  Submitted by [@kitten](https://github.com/kitten) (See [#28](https://github.com/expo/multitars/pull/28))
+- ⚠️ Fix fallback conversion when `Symbol.asyncIterator` isn't available
+  Submitted by [@kitten](https://github.com/kitten) (See [#29](https://github.com/expo/multitars/pull/29))
+- Stop symlink `entry.size === 0` from being used for padding, corrupting the output
+  Submitted by [@kitten](https://github.com/kitten) (See [#30](https://github.com/expo/multitars/pull/30))
+- Apply global PAX size override to all following entries
+  Submitted by [@kitten](https://github.com/kitten) (See [#39](https://github.com/expo/multitars/pull/39))
+- ⚠️ Fix tar outputs with leading slash above length limit miscomputing prefix
+  Submitted by [@kitten](https://github.com/kitten) (See [#27](https://github.com/expo/multitars/pull/27))
+- ⚠️ Fix shared `Uint8Array` on CRLF bytes causing `workerd` regression
+  Submitted by [@kitten](https://github.com/kitten) (See [#41](https://github.com/expo/multitars/pull/41))
+- Restore performance (after regression due to size limit) by decreasing async generator layering overhead
+  Submitted by [@kitten](https://github.com/kitten) (See [#40](https://github.com/expo/multitars/pull/40))
+
 ## 1.0.1
 
 ### Patch Changes
