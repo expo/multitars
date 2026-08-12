@@ -2,7 +2,7 @@ import {
   type ReadableStreamLike,
   type StreamIterator,
   streamLikeToIterator,
-  streamToAsyncIterable,
+  streamToSizedAsyncIterable,
 } from './conversions';
 
 import { encoder } from './shared';
@@ -259,7 +259,11 @@ async function* writeTar(
 
     const stream = entry.stream();
     if (header.size) {
-      yield* streamToAsyncIterable(stream);
+      yield* streamToSizedAsyncIterable(
+        stream,
+        header.size,
+        'Invalid Tar: Entry'
+      );
     } else if (!stream.locked) {
       await stream.cancel();
     }
