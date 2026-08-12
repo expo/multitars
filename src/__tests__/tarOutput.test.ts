@@ -224,6 +224,8 @@ describe('tar', () => {
       await expect(
         streamToBuffer(iterableToStream(tar([file])))
       ).rejects.toThrow(/size/i);
+    });
+
     it('encodes multibyte PAX record lengths in bytes', async () => {
       const name = `${'界'.repeat(120)}.txt`;
       const file = new Blob(['content']);
@@ -238,6 +240,21 @@ describe('tar', () => {
       );
 
       expect(declaredLength).toBe(record.byteLength);
+    });
+
+    it('compresses a multibyte name longer than the header field', async () => {
+      const name = `${'界'.repeat(80)}.txt`;
+      const file = new Blob(['content']);
+      const tarStream = tar([
+        TarFile.from(file.stream(), name, { size: file.size }),
+      ]);
+
+      const entries: { name: string; text: string }[] = [];
+      for await (const entry of untar(iterableToStream(tarStream))) {
+        entries.push({ name: entry.name, text: await entry.text() });
+      }
+
+      expect(entries).toEqual([{ name, text: 'content' }]);
     });
   });
 

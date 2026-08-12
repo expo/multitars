@@ -54,6 +54,8 @@ describe('parseMultipart', () => {
     for await (const _entry of entries) break;
 
     expect(body.locked).toBe(false);
+  });
+
   it('rejects a single header over the 16kB byte limit', async () => {
     const boundary = 'test-boundary';
     const body = [

@@ -169,6 +169,32 @@ describe('untar', () => {
     }).rejects.toThrow(/size/i);
   });
 
+  it('decodes multibyte PAX records using byte lengths', async () => {
+    const placeholder = 'x'.repeat(360);
+    const name = '界'.repeat(120);
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([TarFile.from(new Blob([]).stream(), placeholder, { size: 0 })])
+        )
+      ).arrayBuffer()
+    );
+    const placeholderBytes = Buffer.from(placeholder);
+    const nameBytes = Buffer.from(name);
+    const pathOffset = archive.indexOf(placeholderBytes, 512);
+    expect(pathOffset).toBeGreaterThan(512);
+    expect(nameBytes.byteLength).toBe(placeholderBytes.byteLength);
+    nameBytes.copy(archive, pathOffset);
+
+    const entries: string[] = [];
+    for await (const entry of untar(new Blob([archive]).stream())) {
+      entries.push(entry.name);
+      await entry.text();
+    }
+
+    expect(entries).toEqual([name]);
+  });
+
   it('extract a tarball successfully (unchunked)', async () => {
     const entries: any[] = [];
 
