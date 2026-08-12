@@ -87,8 +87,15 @@ export function streamLikeToIterator<T>(
 ): StreamIterator<T> {
   if ('getReader' in stream && typeof stream.getReader === 'function') {
     const reader = stream.getReader();
+    let done = false;
     return async function read() {
-      return await reader.read();
+      if (done) return { done: true };
+      const result = await reader.read();
+      if (result.done) {
+        done = true;
+        reader.releaseLock();
+      }
+      return result;
     };
   } else {
     const iterator = stream[Symbol.asyncIterator]
