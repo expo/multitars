@@ -157,7 +157,7 @@ async function decodeHeaders(
   // more strict here. The `stream` option is also omitted below
   let byteLength = 0;
   const headers: MultipartHeaders = Object.create(null);
-  while (byteLength < MAX_HEADERS_SIZE) {
+  while (byteLength <= MAX_HEADERS_SIZE) {
     let header = '';
     let headerByteLength = 0;
     for await (const chunk of readUntilBoundary(
