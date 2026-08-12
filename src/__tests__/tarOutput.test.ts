@@ -224,6 +224,20 @@ describe('tar', () => {
       await expect(
         streamToBuffer(iterableToStream(tar([file])))
       ).rejects.toThrow(/size/i);
+    it('encodes multibyte PAX record lengths in bytes', async () => {
+      const name = `${'界'.repeat(120)}.txt`;
+      const file = new Blob(['content']);
+      const tarStream = tar([
+        TarFile.from(file.stream(), name, { size: file.size }),
+      ]);
+      const output = await streamToBuffer(iterableToStream(tarStream));
+      const record = output.subarray(512, output.indexOf(10, 512) + 1);
+      const separator = record.indexOf(32);
+      const declaredLength = Number(
+        new TextDecoder().decode(record.subarray(0, separator))
+      );
+
+      expect(declaredLength).toBe(record.byteLength);
     });
   });
 

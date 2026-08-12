@@ -54,6 +54,46 @@ describe('parseMultipart', () => {
     for await (const _entry of entries) break;
 
     expect(body.locked).toBe(false);
+  it('rejects a single header over the 16kB byte limit', async () => {
+    const boundary = 'test-boundary';
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="test"',
+      `X-Large: ${'界'.repeat(6_000)}`,
+      '',
+      'content',
+      `--${boundary}--`,
+      '',
+    ].join('\r\n');
+
+    const entries = parseMultipart(new Blob([body]).stream(), {
+      contentType: `multipart/form-data; boundary=${boundary}`,
+    });
+    await expect(async () => {
+      for await (const entry of entries) await entry.text();
+    }).rejects.toThrow(/maximum length/);
+  });
+
+  it('decodes a multibyte header split across input blocks', async () => {
+    const boundary = 'test-boundary';
+    const value = '界'.repeat(2_000);
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="test"',
+      `X-Multibyte: ${value}`,
+      '',
+      'content',
+      `--${boundary}--`,
+      '',
+    ].join('\r\n');
+
+    const entries = parseMultipart(new Blob([body]).stream(), {
+      contentType: `multipart/form-data; boundary=${boundary}`,
+    });
+    for await (const entry of entries) {
+      expect(entry.headers['x-multibyte']).toBe(value);
+      await expect(entry.text()).resolves.toBe('content');
+    }
   });
 
   it('extracts a file from a multipart body successfully (unchunked)', async () => {
