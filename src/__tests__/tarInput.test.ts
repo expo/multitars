@@ -169,6 +169,39 @@ describe('untar', () => {
     }).rejects.toThrow(/size/i);
   });
 
+  it('applies a global PAX size override to every following entry', async () => {
+    const pax = new Blob(['10 size=1\n']);
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([
+            TarFile.from(pax.stream(), 'pax', { size: pax.size }),
+            TarFile.from(new Blob(['a']).stream(), 'first.txt', { size: 1 }),
+            TarFile.from(new Blob(['b']).stream(), 'second.txt', { size: 1 }),
+          ])
+        )
+      ).arrayBuffer()
+    );
+
+    archive[156] = 'g'.charCodeAt(0);
+    patchHeader(archive.subarray(0, 512));
+    for (const offset of [1024, 2048]) {
+      const header = archive.subarray(offset, offset + 512);
+      header.fill(0, 124, 136);
+      patchHeader(header);
+    }
+
+    const entries: { size: number; text: string }[] = [];
+    for await (const entry of untar(new Blob([archive]).stream())) {
+      entries.push({ size: entry.size, text: await entry.text() });
+    }
+
+    expect(entries).toEqual([
+      { size: 1, text: 'a' },
+      { size: 1, text: 'b' },
+    ]);
+  });
+
   it('decodes multibyte PAX records using byte lengths', async () => {
     const placeholder = 'x'.repeat(360);
     const name = '界'.repeat(120);

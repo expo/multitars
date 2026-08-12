@@ -67,6 +67,7 @@ export function initTarHeader(gax: TarHeader | null): TarHeader {
     gname: gax?.gname || null,
     devmajor: gax?.devmajor || 0,
     devminor: gax?.devminor || 0,
+    _paxSize: gax?._paxSize,
   };
 }
 
