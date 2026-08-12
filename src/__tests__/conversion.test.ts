@@ -118,6 +118,26 @@ describe('streamLikeToIterator', () => {
     expect(cancelled).toBe(true);
     expect(stream.locked).toBe(false);
   });
+
+  it('should not return an iterator after reaching EOF', async () => {
+    let returned = false;
+    const iterator = streamLikeToIterator({
+      [Symbol.iterator]() {
+        return {
+          next: () => ({ done: true as const, value: undefined }),
+          return: () => {
+            returned = true;
+            return { done: true as const, value: undefined };
+          },
+        };
+      },
+    });
+
+    expect(await iterator.next()).toEqual({ done: true, value: undefined });
+    await iterator.return();
+
+    expect(returned).toBe(false);
+  });
 });
 
 describe('streamToAsyncIterable', () => {
