@@ -76,6 +76,27 @@ describe('parseMultipart', () => {
     }).rejects.toThrow(/maximum length/);
   });
 
+  it('accepts aggregate headers up to the 32kB limit', async () => {
+    const boundary = 'test-boundary';
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="test"',
+      `X-First: ${'a'.repeat(10_000)}`,
+      `X-Second: ${'b'.repeat(10_000)}`,
+      '',
+      'content',
+      `--${boundary}--`,
+      '',
+    ].join('\r\n');
+
+    const entries = parseMultipart(new Blob([body]).stream(), {
+      contentType: `multipart/form-data; boundary=${boundary}`,
+    });
+    for await (const entry of entries) {
+      await expect(entry.text()).resolves.toBe('content');
+    }
+  });
+
   it('decodes a multibyte header split across input blocks', async () => {
     const boundary = 'test-boundary';
     const value = '界'.repeat(2_000);
