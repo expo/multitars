@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { tar } from '../tarOutput';
 import { untar } from '../tarInput';
-import { TarFile, TarTypeFlag, initTarHeader } from '../tarShared';
+import { TarChunk, TarFile, TarTypeFlag, initTarHeader } from '../tarShared';
 import { iterableToStream, streamToBuffer } from './utils';
 
 describe('tar', () => {
@@ -182,6 +182,28 @@ describe('tar', () => {
       }
 
       expect(names).toEqual(NAMES);
+    });
+
+    it('compresses entries after a symlink with a non-zero input size', async () => {
+      const symlinkHeader = initTarHeader(null);
+      symlinkHeader.name = 'link';
+      symlinkHeader.linkname = 'target.txt';
+      symlinkHeader.size = 1;
+      symlinkHeader.typeflag = TarTypeFlag.SYMLINK;
+
+      const file = new Blob(['target']);
+      const tarStream = tar([
+        new TarChunk(new Blob(['x']).stream(), symlinkHeader),
+        TarFile.from(file.stream(), 'target.txt', { size: file.size }),
+      ]);
+
+      const entries: string[] = [];
+      for await (const entry of untar(iterableToStream(tarStream))) {
+        entries.push(entry.name);
+        await entry.text();
+      }
+
+      expect(entries).toEqual(['link', 'target.txt']);
     });
   });
 
