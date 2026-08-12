@@ -256,6 +256,41 @@ describe('tar', () => {
 
       expect(entries).toEqual([{ name, text: 'content' }]);
     });
+
+    it('retains byte-safe fallbacks in headers overridden by PAX', async () => {
+      const name = '界'.repeat(80);
+      const linkname = '😀'.repeat(80);
+      const header = initTarHeader(null);
+      header.name = name;
+      header.linkname = linkname;
+      header.typeflag = TarTypeFlag.SYMLINK;
+
+      const output = await streamToBuffer(
+        iterableToStream(tar([new TarChunk(new Blob([]).stream(), header)]))
+      );
+      const paxSize = Number.parseInt(
+        new TextDecoder().decode(output.subarray(124, 136)),
+        8
+      );
+      const fileHeaderOffset = 512 + Math.ceil(paxSize / 512) * 512;
+      const fileHeader = output.subarray(
+        fileHeaderOffset,
+        fileHeaderOffset + 512
+      );
+      const decodeField = (from: number, to: number) =>
+        new TextDecoder()
+          .decode(fileHeader.subarray(from, to))
+          .replace(/\0+$/, '');
+
+      expect(decodeField(0, 100)).toBe('界'.repeat(33));
+      expect(decodeField(157, 257)).toBe('😀'.repeat(24));
+
+      const entries: { name: string; linkname: string | null }[] = [];
+      for await (const entry of untar(new Blob([output]).stream())) {
+        entries.push({ name: entry.name, linkname: entry.linkname });
+      }
+      expect(entries).toEqual([{ name, linkname }]);
+    });
   });
 
   describe('encodeOctal field encoding', () => {
