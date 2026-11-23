@@ -72,10 +72,10 @@ export function initTarHeader(gax: TarHeader | null): TarHeader {
 }
 
 const getTarName = (header: TarHeader): string => {
-  if (header._longName) {
-    return header._longName;
-  } else if (header._paxName) {
+  if (header._paxName) {
     return header._paxName;
+  } else if (header._longName) {
+    return header._longName;
   } else if (header._prefix) {
     return `${header._prefix}/${header.name}`;
   } else {
@@ -84,7 +84,7 @@ const getTarName = (header: TarHeader): string => {
 };
 
 const getTarLinkName = (header: TarHeader): string | null =>
-  header._longLinkName || header._paxLinkName || header.linkname || null;
+  header._paxLinkName || header._longLinkName || header.linkname || null;
 
 const getTarSize = (header: TarHeader): number =>
   header._paxSize ?? header.size;
