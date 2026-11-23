@@ -16,10 +16,11 @@ import {
 
 async function decodePax(
   reader: ReadableStreamBlockReader,
-  gax: TarHeader | null,
-  header: TarHeader
+  gax: Partial<TarHeader> | null,
+  header: Partial<TarHeader>,
+  size: number
 ) {
-  let remaining = header.size;
+  let remaining = size;
   const chunks: Uint8Array[] = [];
   while (remaining > 0) {
     const block = await reader.read();
@@ -29,7 +30,7 @@ async function decodePax(
     chunks.push(block.slice(0, length));
     remaining -= length;
   }
-  const pax = new Uint8Array(header.size);
+  const pax = new Uint8Array(size);
   for (let idx = 0, offset = 0; idx < chunks.length; idx++) {
     pax.set(chunks[idx], offset);
     offset += chunks[idx].byteLength;
@@ -213,10 +214,11 @@ function decodeBase(header: TarHeader, buffer: Uint8Array): void {
 
 async function decodeHeader(
   reader: ReadableStreamBlockReader,
-  gax: TarHeader
+  gax: Partial<TarHeader>
 ): Promise<TarHeader | undefined> {
   let buffer: Uint8Array | null;
-  let header = initTarHeader(gax);
+  const header = initTarHeader(null);
+  const pax = { ...gax };
   while ((buffer = await reader.read()) && checkMagic(buffer)) {
     if (buffer.byteLength !== reader.blockSize) {
       throw new Error('Invalid Tar: Unexpected EOF while reading header');
@@ -235,12 +237,12 @@ async function decodeHeader(
 
       case InternalTypeFlag.GAX:
         header.size = decodeOctal(buffer, 124, 136);
-        await decodePax(reader, gax, header);
+        await decodePax(reader, gax, pax, header.size);
         continue;
 
       case InternalTypeFlag.PAX:
         header.size = decodeOctal(buffer, 124, 136);
-        await decodePax(reader, null, header);
+        await decodePax(reader, null, pax, header.size);
         continue;
 
       case InternalTypeFlag.OLD_FILE:
@@ -250,7 +252,7 @@ async function decodeHeader(
       case TarTypeFlag.SYMLINK:
       case TarTypeFlag.DIRECTORY:
         decodeBase(header, buffer);
-        return header;
+        return Object.assign(header, pax);
 
       default:
         // Usually we don't check the checksum, but if we don't know the type, we should
@@ -261,7 +263,7 @@ async function decodeHeader(
           );
         }
         decodeBase(header, buffer);
-        return header;
+        return Object.assign(header, pax);
     }
   }
   for (let idx = 0; buffer && idx < buffer.byteLength; idx++)
@@ -285,7 +287,7 @@ export async function* untar(
 async function* readTar(
   reader: ReadableStreamBlockReader
 ): AsyncGenerator<TarFile | TarChunk> {
-  const gax = initTarHeader(null);
+  const gax: Partial<TarHeader> = {};
 
   let header: TarHeader | undefined;
   while ((header = await decodeHeader(reader, gax)) != null) {
