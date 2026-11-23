@@ -60,7 +60,6 @@ async function decodePax(
         break;
       case 'gid':
       case 'uid':
-      case 'mode':
       case 'mtime':
         if (gax) gax[key] = +value;
         header[key] = +value;

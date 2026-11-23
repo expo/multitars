@@ -196,6 +196,32 @@ describe('untar', () => {
     }
   );
 
+  it.each(['x', 'g'])('ignores mode records in a %s PAX header', async type => {
+    const pax = new Blob(['13 mode=2541\n']);
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([
+            TarFile.from(pax.stream(), 'pax', { size: pax.size }),
+            TarFile.from(new Blob(['x']).stream(), 'x.txt', { size: 1 }),
+          ])
+        )
+      ).arrayBuffer()
+    );
+    archive[156] = type.charCodeAt(0);
+    patchHeader(archive.subarray(0, 512));
+
+    const entries: { name: string; mode: number; text: string }[] = [];
+    for await (const entry of untar(new Blob([archive]).stream())) {
+      entries.push({
+        name: entry.name,
+        mode: entry.mode,
+        text: await entry.text(),
+      });
+    }
+    expect(entries).toEqual([{ name: 'x.txt', mode: 0o644, text: 'x' }]);
+  });
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(
