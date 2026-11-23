@@ -71,7 +71,7 @@ export function initTarHeader(gax: TarHeader | null): TarHeader {
   };
 }
 
-const getTarName = (header: TarHeader): string => {
+export const getTarName = (header: TarHeader): string => {
   if (header._paxName) {
     return header._paxName;
   } else if (header._longName) {
