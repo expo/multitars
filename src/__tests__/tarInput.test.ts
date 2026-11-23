@@ -424,6 +424,60 @@ describe('untar', () => {
     expect(entries).toEqual([]);
   });
 
+  it.each([
+    ['x', 'L', false],
+    ['x', 'L', true],
+    ['x', 'K', false],
+    ['x', 'K', true],
+    ['g', 'L', false],
+    ['g', 'L', true],
+    ['g', 'K', false],
+    ['g', 'K', true],
+  ] as const)(
+    'prefers %s PAX over GNU %s (PAX first: %s)',
+    async (paxType, longType, paxFirst) => {
+      const pax = new Blob([
+        longType === 'L' ? '17 path=from-pax\n' : '21 linkpath=from-pax\n',
+      ]);
+      const long = new Blob(['from-gnu\0']);
+      const extensions = [
+        TarFile.from(pax.stream(), 'pax', { size: pax.size }),
+        TarFile.from(long.stream(), 'long', { size: long.size }),
+      ];
+      if (!paxFirst) extensions.reverse();
+      const archive = Buffer.from(
+        await new Response(
+          iterableToStream(
+            tar([
+              ...extensions,
+              TarFile.from(new Blob([]).stream(), 'base.txt', { size: 0 }),
+            ])
+          )
+        ).arrayBuffer()
+      );
+      for (const [offset, type] of [
+        [0, paxFirst ? paxType : longType],
+        [1024, paxFirst ? longType : paxType],
+        [2048, longType === 'K' ? '2' : '0'],
+      ] as const) {
+        const header = archive.subarray(offset, offset + 512);
+        header[156] = type.charCodeAt(0);
+        patchHeader(header);
+      }
+      const entries: { name: string; linkname: string | null }[] = [];
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        entries.push({ name: entry.name, linkname: entry.linkname });
+        await entry.text();
+      }
+      expect(entries).toEqual([
+        {
+          name: longType === 'L' ? 'from-pax' : 'base.txt',
+          linkname: longType === 'K' ? 'from-pax' : null,
+        },
+      ]);
+    }
+  );
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(
