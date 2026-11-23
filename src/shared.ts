@@ -1,2 +1,2 @@
 export const encoder = new TextEncoder();
-export const decoder = new TextDecoder();
+export const decoder = new TextDecoder('utf-8', { ignoreBOM: true });

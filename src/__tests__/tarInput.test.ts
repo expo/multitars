@@ -584,6 +584,47 @@ describe('untar', () => {
     }
   );
 
+  it.each([
+    ['L', false],
+    ['K', false],
+    ['L', true],
+    ['K', true],
+  ] as const)(
+    'isolates concurrent GNU %s decoding (BOM: %s)',
+    async (type, bom) => {
+      const name = (bom ? '\uFEFF' + 'a'.repeat(508) : 'a'.repeat(511)) + '界';
+      const payload = new Blob([name + '\0']);
+      const archive = Buffer.from(
+        await new Response(
+          iterableToStream(
+            tar([
+              TarFile.from(payload.stream(), 'extension', {
+                size: payload.size,
+              }),
+              TarFile.from(new Blob([]).stream(), 'base.txt', { size: 0 }),
+            ])
+          )
+        ).arrayBuffer()
+      );
+      archive[156] = type.charCodeAt(0);
+      patchHeader(archive.subarray(0, 512));
+      if (type === 'K') {
+        archive[1536 + 156] = TarTypeFlag.SYMLINK;
+        patchHeader(archive.subarray(1536, 2048));
+      }
+      const read = async () => {
+        const names: (string | null)[] = [];
+        for await (const entry of untar(new Blob([archive]).stream())) {
+          names.push(type === 'L' ? entry.name : entry.linkname);
+          await entry.text();
+        }
+        return names;
+      };
+      expect(await read()).toEqual([name]);
+      expect(await Promise.all([read(), read()])).toEqual([[name], [name]]);
+    }
+  );
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(

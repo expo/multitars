@@ -75,6 +75,19 @@ describe('tar', () => {
     }
   });
 
+  it.each(['\uFEFFfile.txt', '\uFEFF' + 'd'.repeat(80) + '/' + 'f'.repeat(40)])(
+    'preserves a literal leading BOM in a tar pathname: %s',
+    async name => {
+      const file = TarFile.from(['x'], name, { size: 1 });
+      const names: string[] = [];
+      for await (const entry of untar(iterableToStream(tar([file])))) {
+        names.push(entry.name);
+        expect(await entry.text()).toBe('x');
+      }
+      expect(names).toEqual([name]);
+    }
+  );
+
   describe('tested via untar()', () => {
     it('compresses a single file readable by untar', async () => {
       const NOW = 1751629979000;

@@ -111,6 +111,7 @@ async function decodeLongString(
   reader: ReadableStreamBlockReader,
   size: number
 ): Promise<string> {
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
   let remaining = size;
   let output = '';
   let endIndex = -1;
