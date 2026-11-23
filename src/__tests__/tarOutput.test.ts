@@ -25,6 +25,56 @@ describe('tar', () => {
     expect(cancelled).toBe(true);
   });
 
+  it.each([
+    ['zero.txt', 0, 0],
+    ['x'.repeat(120), 0, 0],
+    ['zero.txt', 0, 100],
+    ['zero.txt', 0o644, 0],
+  ] as const)(
+    'preserves metadata for %s (mode %s, mtime %s)',
+    async (name, mode, mtime) => {
+      const file = TarFile.from(['x'], name, {
+        size: 1,
+        lastModified: 100_000,
+      });
+      file.mode = mode;
+      file.mtime = mtime;
+      const entries: {
+        name: string;
+        mode: number;
+        mtime: number;
+        text: string;
+      }[] = [];
+      for await (const entry of untar(iterableToStream(tar([file])))) {
+        entries.push({
+          name: entry.name,
+          mode: entry.mode,
+          mtime: entry.mtime,
+          text: await entry.text(),
+        });
+      }
+      expect(entries).toEqual([{ name, mode, mtime, text: 'x' }]);
+    }
+  );
+
+  it('preserves an explicit epoch timestamp supplied to TarFile.from', async () => {
+    const file = TarFile.from(['x'], 'epoch.txt', { size: 1, lastModified: 0 });
+    for await (const entry of untar(iterableToStream(tar([file])))) {
+      expect(entry.mode).toBe(0o644);
+      expect(entry.mtime).toBe(0);
+      expect(await entry.text()).toBe('x');
+    }
+  });
+
+  it('defaults to standard permissions and the epoch when metadata is omitted', async () => {
+    const file = TarFile.from(['x'], 'default.txt', { size: 1 });
+    for await (const entry of untar(iterableToStream(tar([file])))) {
+      expect(entry.mode).toBe(0o644);
+      expect(entry.mtime).toBe(0);
+      expect(await entry.text()).toBe('x');
+    }
+  });
+
   describe('tested via untar()', () => {
     it('compresses a single file readable by untar', async () => {
       const NOW = 1751629979000;
