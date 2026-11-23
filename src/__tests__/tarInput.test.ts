@@ -222,6 +222,35 @@ describe('untar', () => {
     expect(entries).toEqual([{ name: 'x.txt', mode: 0o644, text: 'x' }]);
   });
 
+  it.each([
+    ['GNU', 'ustar  \0', 'file.txt'],
+    ['POSIX', 'ustar\0' + '00', '15301000244/file.txt'],
+  ])(
+    'uses the %s header layout for the prefix field',
+    async (_format, magic, name) => {
+      const archive = Buffer.from(
+        await new Response(
+          iterableToStream(
+            tar([
+              TarFile.from(new Blob(['x']).stream(), 'file.txt', { size: 1 }),
+            ])
+          )
+        ).arrayBuffer()
+      );
+      archive.write(magic, 257, 'ascii');
+      // GNU atime/ctime fields occupy the same bytes as the POSIX prefix.
+      archive.write('15301000244\0', 345, 'ascii');
+      archive.write('15301000244\0', 357, 'ascii');
+      patchHeader(archive.subarray(0, 512));
+
+      const entries: { name: string; text: string }[] = [];
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        entries.push({ name: entry.name, text: await entry.text() });
+      }
+      expect(entries).toEqual([{ name, text: 'x' }]);
+    }
+  );
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(

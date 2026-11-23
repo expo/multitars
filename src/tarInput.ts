@@ -195,7 +195,12 @@ function decodeBase(header: TarHeader, buffer: Uint8Array): void {
   header.devmajor = decodeOctal(buffer, 329, 337);
   header.devminor = decodeOctal(buffer, 337, 345);
 
-  if (buffer[345] !== 0) {
+  if (
+    buffer[262] === 0 &&
+    buffer[263] === 0x30 &&
+    buffer[264] === 0x30 &&
+    buffer[345] !== 0
+  ) {
     header._prefix = decodeString(buffer, 345, 500);
   }
   if (
