@@ -251,6 +251,94 @@ describe('untar', () => {
     }
   );
 
+  it.each(['x', 'g'])(
+    'preserves zero overrides in a %s PAX header',
+    async type => {
+      const pax = new Blob(['8 uid=0\n8 gid=0\n11 mtime=0\n']);
+      const archive = Buffer.from(
+        await new Response(
+          iterableToStream(
+            tar([
+              TarFile.from(pax.stream(), 'pax', { size: pax.size }),
+              TarFile.from(new Blob([]).stream(), 'first.txt', { size: 0 }),
+              TarFile.from(new Blob([]).stream(), 'second.txt', { size: 0 }),
+            ])
+          )
+        ).arrayBuffer()
+      );
+      archive[156] = type.charCodeAt(0);
+      patchHeader(archive.subarray(0, 512));
+      for (const offset of [1024, 1536]) {
+        const header = archive.subarray(offset, offset + 512);
+        header.write('0000173\0', 108, 'ascii');
+        header.write('0000710\0', 116, 'ascii');
+        header.write('00000000144\0', 136, 'ascii');
+        patchHeader(header);
+      }
+
+      const entries: { uid: number; gid: number; mtime: number }[] = [];
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        entries.push({ uid: entry.uid, gid: entry.gid, mtime: entry.mtime });
+        await entry.text();
+      }
+      expect(entries).toEqual([
+        { uid: 0, gid: 0, mtime: 0 },
+        type === 'g'
+          ? { uid: 0, gid: 0, mtime: 0 }
+          : { uid: 123, gid: 456, mtime: 100 },
+      ]);
+    }
+  );
+
+  it('preserves global PAX overrides after a local override', async () => {
+    const global = new Blob([
+      '19 path=global.txt\n26 linkpath=global-target\n10 uid=42\n',
+    ]);
+    const local = new Blob([
+      '18 path=local.txt\n25 linkpath=local-target\n8 uid=0\n',
+    ]);
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([
+            TarFile.from(global.stream(), 'global', { size: global.size }),
+            TarFile.from(new Blob([]).stream(), 'first.txt', { size: 0 }),
+            TarFile.from(local.stream(), 'local', { size: local.size }),
+            TarFile.from(new Blob([]).stream(), 'second.txt', { size: 0 }),
+            TarFile.from(new Blob([]).stream(), 'third.txt', { size: 0 }),
+          ])
+        )
+      ).arrayBuffer()
+    );
+    for (const [offset, type] of [
+      [0, 'g'],
+      [1024, '2'],
+      [1536, 'x'],
+      [2560, '2'],
+      [3072, '2'],
+    ] as const) {
+      const header = archive.subarray(offset, offset + 512);
+      header[156] = type.charCodeAt(0);
+      patchHeader(header);
+    }
+
+    const entries: { name: string; linkname: string | null; uid: number }[] =
+      [];
+    for await (const entry of untar(new Blob([archive]).stream())) {
+      entries.push({
+        name: entry.name,
+        linkname: entry.linkname,
+        uid: entry.uid,
+      });
+      await entry.text();
+    }
+    expect(entries).toEqual([
+      { name: 'global.txt', linkname: 'global-target', uid: 42 },
+      { name: 'local.txt', linkname: 'local-target', uid: 0 },
+      { name: 'global.txt', linkname: 'global-target', uid: 42 },
+    ]);
+  });
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(
