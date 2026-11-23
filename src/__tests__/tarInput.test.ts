@@ -527,6 +527,63 @@ describe('untar', () => {
     }
   );
 
+  describe.each(['base', 'pax', 'gnu'])(
+    'trailing slash in %s names',
+    source => {
+      it.each([
+        [0, 'dir/', TarTypeFlag.DIRECTORY],
+        [48, 'dir/', TarTypeFlag.DIRECTORY],
+        [0, 'file.txt', TarTypeFlag.FILE],
+        [48, 'file.txt', TarTypeFlag.FILE],
+      ])('decodes flag %s and name %s', async (type, name, expectedType) => {
+        const payload = new Blob([
+          source === 'pax'
+            ? name === 'dir/'
+              ? '13 path=dir/\n'
+              : '17 path=file.txt\n'
+            : name + '\0',
+        ]);
+        const archive = Buffer.from(
+          await new Response(
+            iterableToStream(
+              tar([
+                ...(source === 'base'
+                  ? []
+                  : [
+                      TarFile.from(payload.stream(), 'extension', {
+                        size: payload.size,
+                      }),
+                    ]),
+                TarFile.from(
+                  new Blob([]).stream(),
+                  source === 'base'
+                    ? name
+                    : name === 'dir/'
+                      ? 'file.txt'
+                      : 'dir/',
+                  { size: 0 }
+                ),
+              ])
+            )
+          ).arrayBuffer()
+        );
+        if (source !== 'base') {
+          archive[156] = (source === 'pax' ? 'x' : 'L').charCodeAt(0);
+          patchHeader(archive.subarray(0, 512));
+        }
+        const offset = source === 'base' ? 0 : 1024;
+        archive[offset + 156] = type;
+        patchHeader(archive.subarray(offset, offset + 512));
+        const entries: { name: string; type: number }[] = [];
+        for await (const entry of untar(new Blob([archive]).stream())) {
+          entries.push({ name: entry.name, type: entry.typeflag });
+          await entry.text();
+        }
+        expect(entries).toEqual([{ name, type: expectedType }]);
+      });
+    }
+  );
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(

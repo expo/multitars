@@ -12,6 +12,7 @@ import {
   TarChunk,
   initTarHeader,
   getTarSize,
+  getTarName,
   blockPad,
 } from './tarShared';
 
@@ -206,12 +207,6 @@ function decodeBase(header: TarHeader, buffer: Uint8Array): void {
       header._prefix = decodeString(buffer, 345, 500);
     }
   }
-  if (
-    header.typeflag === InternalTypeFlag.OLD_FILE &&
-    header.name.endsWith('/')
-  ) {
-    header.typeflag = TarTypeFlag.DIRECTORY;
-  }
 }
 
 async function decodeHeader(
@@ -296,6 +291,13 @@ async function* readTar(
 
   let header: TarHeader | undefined;
   while ((header = await decodeHeader(reader, gax)) != null) {
+    if (
+      (header.typeflag === InternalTypeFlag.OLD_FILE ||
+        header.typeflag === TarTypeFlag.FILE) &&
+      getTarName(header).endsWith('/')
+    ) {
+      header.typeflag = TarTypeFlag.DIRECTORY;
+    }
     const size = getTarSize(header);
     if (!Number.isSafeInteger(size) || size < 0) {
       throw new Error(`Invalid Tar: Invalid entry size ${size}`);
