@@ -88,6 +88,56 @@ describe('tar', () => {
     }
   );
 
+  it.each([
+    ['u'.repeat(40), 'g'.repeat(40)],
+    ['界'.repeat(11), '😀'.repeat(9)],
+    ['u'.repeat(31) + '界', 'g'.repeat(31) + 'é'],
+  ])('preserves long owner and group names (%s, %s)', async (uname, gname) => {
+    const file = TarFile.from(['x'], 'owner.txt', { size: 1 });
+    file.uname = uname;
+    file.gname = gname;
+    const entries: {
+      uname: string | null;
+      gname: string | null;
+      text: string;
+    }[] = [];
+    for await (const entry of untar(iterableToStream(tar([file])))) {
+      entries.push({
+        uname: entry.uname,
+        gname: entry.gname,
+        text: await entry.text(),
+      });
+    }
+    expect(entries).toEqual([{ uname, gname, text: 'x' }]);
+  });
+
+  it.each([
+    ['u'.repeat(31), false],
+    ['u'.repeat(32), false],
+    ['u'.repeat(33), true],
+    ['é'.repeat(16), true],
+  ] as const)(
+    'uses PAX when an owner name requires it: %s',
+    async (name, pax) => {
+      const file = TarFile.from([], 'owner.txt', { size: 0 });
+      file.uname = name;
+      file.gname = name;
+      const bytes = await streamToBuffer(iterableToStream(tar([file])));
+      expect(bytes[156]).toBe(pax ? 'x'.charCodeAt(0) : TarTypeFlag.FILE);
+      if (pax) {
+        const size = parseInt(
+          Buffer.from(bytes.subarray(124, 136)).toString('ascii'),
+          8
+        );
+        const records = Buffer.from(bytes.subarray(512, 512 + size)).toString(
+          'utf8'
+        );
+        expect(records).toContain(' uname=' + name + '\n');
+        expect(records).toContain(' gname=' + name + '\n');
+      }
+    }
+  );
+
   describe('tested via untar()', () => {
     it('compresses a single file readable by untar', async () => {
       const NOW = 1751629979000;

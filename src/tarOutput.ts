@@ -159,7 +159,13 @@ function encodeHeader(header: TarHeader): Uint8Array<ArrayBuffer> {
 }
 
 function encodePax(header: TarHeader): Uint8Array<ArrayBuffer> | null {
-  function encodePaxEntry(key: string, value: string) {
+  function encodePaxEntry(
+    key: string,
+    value: string | null | undefined,
+    maxLength = 32
+  ) {
+    if (!value || (value.length <= maxLength && !nonAsciiRe.test(value)))
+      return '';
     const line = ` ${key}=${value}\n`;
     let length = encoder.encode(line).byteLength;
     const prefix = `${length}`;
@@ -169,10 +175,11 @@ function encodePax(header: TarHeader): Uint8Array<ArrayBuffer> | null {
     if (1 + Math.floor(Math.log10(length)) > prefix.length) length += 1;
     return `${length}${line}`;
   }
-  let output = '';
-  if (header._paxName) output += encodePaxEntry('path', header._paxName);
-  if (header._paxLinkName)
-    output += encodePaxEntry('linkpath', header._paxLinkName);
+  const output =
+    encodePaxEntry('path', header._paxName, 0) +
+    encodePaxEntry('linkpath', header._paxLinkName, 0) +
+    encodePaxEntry('uname', header.uname) +
+    encodePaxEntry('gname', header.gname);
   return output ? encoder.encode(output) : null;
 }
 
