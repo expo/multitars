@@ -1,5 +1,32 @@
 # multitars
 
+## 1.0.3
+
+### Patch Changes
+
+- Exclude prefix handling for GNU headers that use the ustar prefix range for access and change times
+  Submitted by [@kitten](https://github.com/kitten) (See [#44](https://github.com/expo/multitars/pull/44))
+- Apply directory override to all files with trailing slashes consistently
+  Submitted by [@kitten](https://github.com/kitten) (See [#49](https://github.com/expo/multitars/pull/49))
+- Treat directory payload sizes as zero to preserve subsequent archive entries
+  Submitted by [@kitten](https://github.com/kitten) (See [#48](https://github.com/expo/multitars/pull/48))
+- Preserve zero-valued PAX overrides and apply global PAX paths and link targets to subsequent entries
+  Submitted by [@kitten](https://github.com/kitten) (See [#45](https://github.com/expo/multitars/pull/45))
+- Remove `mode` from accepted PAX fields
+  Submitted by [@kitten](https://github.com/kitten) (See [#43](https://github.com/expo/multitars/pull/43))
+- Preserve long and non-ASCII owner and group names using PAX records
+  Submitted by [@kitten](https://github.com/kitten) (See [#52](https://github.com/expo/multitars/pull/52))
+- Isolate streaming text decoders for concurrent parsing and preserve leading BOM characters in tar metadata
+  Submitted by [@kitten](https://github.com/kitten) (See [#51](https://github.com/expo/multitars/pull/51))
+- Support V7 tar headers without ustar magic by validating their checksum and ignoring ustar-only fields
+  Submitted by [@kitten](https://github.com/kitten) (See [#46](https://github.com/expo/multitars/pull/46))
+- Match GNU tar’s longstanding pax pathname precedence
+  Submitted by [@kitten](https://github.com/kitten) (See [#47](https://github.com/expo/multitars/pull/47))
+- Ignore base header fields and only apply `size` for long name, gax/pax, and long link name headers
+  Submitted by [@kitten](https://github.com/kitten) (See [#42](https://github.com/expo/multitars/pull/42))
+- Preserve zero-valued modes and modification times and default omitted timestamps to the Unix epoch
+  Submitted by [@kitten](https://github.com/kitten) (See [#50](https://github.com/expo/multitars/pull/50))
+
 ## 1.0.2
 
 ### Patch Changes
