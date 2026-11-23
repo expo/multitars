@@ -339,6 +339,91 @@ describe('untar', () => {
     ]);
   });
 
+  async function makeV7Archive() {
+    const archive = Buffer.from(
+      await new Response(
+        iterableToStream(
+          tar([
+            TarFile.from(new Blob(['x']).stream(), 'file.txt', {
+              size: 1,
+              lastModified: 100_000,
+            }),
+          ])
+        )
+      ).arrayBuffer()
+    );
+    archive[156] = 0;
+    archive.fill(0, 257, 512);
+    patchHeader(archive.subarray(0, 512));
+    return archive;
+  }
+
+  it.each([false, true])(
+    'reads V7 entries without interpreting padding as ustar fields (padding: %s)',
+    async padding => {
+      const archive = await makeV7Archive();
+      if (padding) {
+        archive.write('ignored-user', 265, 'ascii');
+        archive.write('ignored-group', 297, 'ascii');
+        archive.write('0000001\0', 329, 'ascii');
+        archive.write('0000002\0', 337, 'ascii');
+        archive.write('ignored-prefix', 345, 'ascii');
+        patchHeader(archive.subarray(0, 512));
+      }
+      const entries: Record<string, unknown>[] = [];
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        entries.push({
+          name: entry.name,
+          mode: entry.mode,
+          size: entry.size,
+          mtime: entry.mtime,
+          uname: entry.uname,
+          gname: entry.gname,
+          devmajor: entry.devmajor,
+          devminor: entry.devminor,
+          text: await entry.text(),
+        });
+      }
+      expect(entries).toEqual([
+        {
+          name: 'file.txt',
+          mode: 0o644,
+          size: 1,
+          mtime: 100,
+          uname: null,
+          gname: null,
+          devmajor: 0,
+          devminor: 0,
+          text: 'x',
+        },
+      ]);
+    }
+  );
+
+  it.each(['corrupted', 'minimum checksum'])(
+    'rejects V7 headers with an invalid checksum (%s)',
+    async kind => {
+      const archive = await makeV7Archive();
+      if (kind === 'corrupted') archive[0] ^= 1;
+      else archive.write('000400\0 ', 148, 'ascii');
+      await expect(async () => {
+        for await (const entry of untar(new Blob([archive]).stream())) {
+          await entry.text();
+        }
+      }).rejects.toThrow();
+    }
+  );
+
+  it('recognizes zero blocks as the end of an empty archive', async () => {
+    const entries: string[] = [];
+    for await (const entry of untar(
+      new Blob([new Uint8Array(1024)]).stream()
+    )) {
+      entries.push(entry.name);
+    }
+    expect(entries).toEqual([]);
+  });
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(
