@@ -119,6 +119,83 @@ describe('untar', () => {
     expect(tarball.locked).toBe(false);
   });
 
+  it.each(['x', 'g', 'L', 'N', 'K'])(
+    'ignores the ordinary metadata of a %s extension header',
+    async type => {
+      const isPax = type === 'x' || type === 'g';
+      const payload = new Blob([isPax ? '10 uid=42\n' : 'x.txt\0']);
+      const archive = Buffer.from(
+        await new Response(
+          iterableToStream(
+            tar([
+              TarFile.from(payload.stream(), 'extension', {
+                size: payload.size,
+              }),
+              TarFile.from(new Blob(['x']).stream(), 'x.txt', { size: 1 }),
+            ])
+          )
+        ).arrayBuffer()
+      );
+      const extension = archive.subarray(0, 512);
+      const file = archive.subarray(1024, 1536);
+      extension[156] = type.charCodeAt(0);
+      if (type === 'K') file[156] = TarTypeFlag.SYMLINK;
+      for (const [header, mode, uid, gid, mtime, uname, gname] of [
+        [extension, 0o4755, 123, 456, 789, 'extension-user', 'extension-group'],
+        [file, 0o644, 7, 8, 9, 'file-user', 'file-group'],
+      ] as const) {
+        for (const [from, to, value] of [
+          [100, 108, mode],
+          [108, 116, uid],
+          [116, 124, gid],
+          [136, 148, mtime],
+        ]) {
+          header.fill(0, from, to);
+          header.write(
+            value.toString(8).padStart(to - from - 1, '0'),
+            from,
+            'ascii'
+          );
+        }
+        header.fill(0, 265, 329);
+        header.write(uname, 265, 'ascii');
+        header.write(gname, 297, 'ascii');
+        header.fill(0, 345, 500);
+      }
+      extension.write('injected', 345, 'ascii');
+      patchHeader(extension);
+      patchHeader(file);
+
+      const entries: Record<string, unknown>[] = [];
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        entries.push({
+          name: entry.name,
+          mode: entry.mode,
+          uid: entry.uid,
+          gid: entry.gid,
+          mtime: entry.mtime,
+          uname: entry.uname,
+          gname: entry.gname,
+          linkname: entry.linkname,
+          text: await entry.text(),
+        });
+      }
+      expect(entries).toEqual([
+        {
+          name: 'x.txt',
+          mode: 0o644,
+          uid: isPax ? 42 : 7,
+          gid: 8,
+          mtime: 9,
+          uname: 'file-user',
+          gname: 'file-group',
+          linkname: type === 'K' ? 'x.txt' : null,
+          text: 'x',
+        },
+      ]);
+    }
+  );
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(

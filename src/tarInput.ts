@@ -220,22 +220,22 @@ async function decodeHeader(
     switch (getTypeFlag(buffer)) {
       case InternalTypeFlag.LONG_NAME:
       case InternalTypeFlag.OLD_LONG_NAME:
-        decodeBase(header, buffer);
+        header.size = decodeOctal(buffer, 124, 136);
         header._longName = await decodeLongString(reader, header.size);
         continue;
 
       case InternalTypeFlag.LONG_LINK_NAME:
-        decodeBase(header, buffer);
+        header.size = decodeOctal(buffer, 124, 136);
         header._longLinkName = await decodeLongString(reader, header.size);
         continue;
 
       case InternalTypeFlag.GAX:
-        decodeBase(header, buffer);
+        header.size = decodeOctal(buffer, 124, 136);
         await decodePax(reader, gax, header);
         continue;
 
       case InternalTypeFlag.PAX:
-        decodeBase(header, buffer);
+        header.size = decodeOctal(buffer, 124, 136);
         await decodePax(reader, null, header);
         continue;
 
