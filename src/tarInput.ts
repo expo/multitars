@@ -94,7 +94,6 @@ function checkMagic(bytes: Uint8Array): boolean {
 function checkChecksum(bytes: Uint8Array): number {
   let sum = CHECKSUM_INITIAL;
   const chksum = decodeOctal(bytes, 148, 156);
-  if (chksum === sum) return sum;
   for (let idx = 0; idx < 148; idx++) sum += bytes[idx];
   for (let idx = 156; idx < 512; idx++) sum += bytes[idx];
   return sum === chksum ? sum : 0;
@@ -191,18 +190,20 @@ function decodeBase(header: TarHeader, buffer: Uint8Array): void {
   header.linkname = decodeString(buffer, 157, 257) || null;
   // TMAGIC: 257 - 263
   // TVERSION: 263 - 265
-  header.uname ||= decodeString(buffer, 265, 297) || null;
-  header.gname ||= decodeString(buffer, 297, 329) || null;
-  header.devmajor = decodeOctal(buffer, 329, 337);
-  header.devminor = decodeOctal(buffer, 337, 345);
+  if (checkMagic(buffer)) {
+    header.uname ||= decodeString(buffer, 265, 297) || null;
+    header.gname ||= decodeString(buffer, 297, 329) || null;
+    header.devmajor = decodeOctal(buffer, 329, 337);
+    header.devminor = decodeOctal(buffer, 337, 345);
 
-  if (
-    buffer[262] === 0 &&
-    buffer[263] === 0x30 &&
-    buffer[264] === 0x30 &&
-    buffer[345] !== 0
-  ) {
-    header._prefix = decodeString(buffer, 345, 500);
+    if (
+      buffer[262] === 0 &&
+      buffer[263] === 0x30 &&
+      buffer[264] === 0x30 &&
+      buffer[345] !== 0
+    ) {
+      header._prefix = decodeString(buffer, 345, 500);
+    }
   }
   if (
     header.typeflag === InternalTypeFlag.OLD_FILE &&
@@ -219,7 +220,10 @@ async function decodeHeader(
   let buffer: Uint8Array | null;
   const header = initTarHeader(null);
   const pax = { ...gax };
-  while ((buffer = await reader.read()) && checkMagic(buffer)) {
+  while (
+    (buffer = await reader.read()) &&
+    (checkMagic(buffer) || (buffer[0] !== 0 && checkChecksum(buffer)))
+  ) {
     if (buffer.byteLength !== reader.blockSize) {
       throw new Error('Invalid Tar: Unexpected EOF while reading header');
     }
