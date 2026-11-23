@@ -478,6 +478,55 @@ describe('untar', () => {
     }
   );
 
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+  ])(
+    'ignores directory sizes (PAX: %s, skip directory: %s)',
+    async (paxSize, skipDirectory) => {
+      const pax = new Blob(['12 size=512\n']);
+      const archive = Buffer.from(
+        await new Response(
+          iterableToStream(
+            tar([
+              ...(paxSize
+                ? [TarFile.from(pax.stream(), 'pax', { size: pax.size })]
+                : []),
+              TarFile.from(new Blob([]).stream(), 'dir/', { size: 0 }),
+              TarFile.from(new Blob(['x']).stream(), 'kept.txt', { size: 1 }),
+            ])
+          )
+        ).arrayBuffer()
+      );
+      if (paxSize) {
+        archive[156] = 'x'.charCodeAt(0);
+        patchHeader(archive.subarray(0, 512));
+      }
+      const offset = paxSize ? 1024 : 0;
+      const directory = archive.subarray(offset, offset + 512);
+      directory[156] = TarTypeFlag.DIRECTORY;
+      if (!paxSize) directory.write('00000001000\0', 124, 'ascii');
+      patchHeader(directory);
+
+      const entries: { name: string; size: number; text?: string }[] = [];
+      for await (const entry of untar(new Blob([archive]).stream())) {
+        entries.push({
+          name: entry.name,
+          size: entry.size,
+          ...(skipDirectory && entry.typeflag === TarTypeFlag.DIRECTORY
+            ? {}
+            : { text: await entry.text() }),
+        });
+      }
+      expect(entries).toEqual([
+        { name: 'dir/', size: 0, ...(skipDirectory ? {} : { text: '' }) },
+        { name: 'kept.txt', size: 1, text: 'x' },
+      ]);
+    }
+  );
+
   it('respects a zero size override in a PAX header', async () => {
     const pax = new Blob(['10 size=0\n']);
     const archive = Buffer.from(

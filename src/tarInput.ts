@@ -11,6 +11,7 @@ import {
   TarFile,
   TarChunk,
   initTarHeader,
+  getTarSize,
   blockPad,
 } from './tarShared';
 
@@ -295,7 +296,7 @@ async function* readTar(
 
   let header: TarHeader | undefined;
   while ((header = await decodeHeader(reader, gax)) != null) {
-    const size = header._paxSize ?? header.size;
+    const size = getTarSize(header);
     if (!Number.isSafeInteger(size) || size < 0) {
       throw new Error(`Invalid Tar: Invalid entry size ${size}`);
     }
