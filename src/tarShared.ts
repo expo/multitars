@@ -146,9 +146,8 @@ export class TarFile extends StreamFile implements TarChunkHeader {
   ) {
     const header = initTarHeader(null);
     header.name = name;
-    header.mtime = options.lastModified
-      ? Math.floor(options.lastModified / 1000)
-      : 0;
+    header.mode = 0o644;
+    header.mtime = Math.floor((options.lastModified ?? 0) / 1000);
     header.size = options.size || 0;
     return new TarFile(stream, header);
   }
