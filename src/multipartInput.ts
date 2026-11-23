@@ -16,7 +16,6 @@ const MAX_PREAMBLE_SIZE = 16_000; /*16kB*/
 const MAX_HEADER_SIZE = 16_000; /*16kB*/
 const MAX_HEADERS_SIZE = 32_000; /*32kB*/
 const boundaryHeaderRe = /boundary="?([^=";]+)"?/i;
-const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 function utf8Encode(
   content: string | ArrayBufferView | ArrayBufferLike
@@ -151,10 +150,9 @@ async function expectTrailer(
 }
 
 async function decodeHeaders(
-  reader: ReadableStreamBlockReader
+  reader: ReadableStreamBlockReader,
+  decoder: TextDecoder
 ): Promise<MultipartHeaders | null> {
-  // NOTE: The characters we're decoding in headers is restricted, and we're therefore
-  // more strict here. The `stream` option is also omitted below
   let byteLength = 0;
   const headers: MultipartHeaders = Object.create(null);
   while (byteLength <= MAX_HEADERS_SIZE) {
@@ -236,11 +234,12 @@ async function* readMultipart(
   reader: ReadableStreamBlockReader,
   params: ParseMultipartParams
 ): AsyncGenerator<MultipartPart> {
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
   const boundary = convertToBoundaryBytes(params.contentType);
   await expectPreamble(reader, boundary);
 
   let headers: MultipartHeaders | null;
-  while ((headers = await decodeHeaders(reader))) {
+  while ((headers = await decodeHeaders(reader, decoder))) {
     const type = headers['content-type'];
     const disposition = parseContentDisposition(headers['content-disposition']);
     const name = disposition?.filename || disposition?.name;

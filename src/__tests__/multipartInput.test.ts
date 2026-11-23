@@ -24,6 +24,33 @@ function chunk(
 }
 
 describe('parseMultipart', () => {
+  it('isolates concurrent multipart header decoding', async () => {
+    const prefix =
+      '--test\r\nContent-Disposition: form-data; name="file"\r\nX-Name: ';
+    const value = 'a'.repeat(4095 - 'X-Name: '.length) + '界';
+    const body =
+      prefix +
+      value +
+      '\r\n\r\nx\r\n' +
+      prefix +
+      value +
+      '\r\n\r\nx\r\n--test--\r\n';
+    const read = async () => {
+      const values: (string | undefined)[] = [];
+      for await (const entry of parseMultipart(new Blob([body]).stream(), {
+        contentType: 'multipart/form-data; boundary=test',
+      })) {
+        values.push(entry.headers['x-name']);
+        expect(await entry.text()).toBe('x');
+      }
+      return values;
+    };
+    expect(await Promise.all([read(), read()])).toEqual([
+      [value, value],
+      [value, value],
+    ]);
+  });
+
   it('releases the input stream when parsing fails', async () => {
     const body = new Blob([]).stream();
 
